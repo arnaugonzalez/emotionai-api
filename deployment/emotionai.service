@@ -1,0 +1,40 @@
+[Unit]
+Description=EmotionAI API - Mental Health Support Application
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=exec
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/emotionai-api
+Environment=PATH=/opt/emotionai-api/venv/bin
+Environment=ENVIRONMENT=production
+ExecStart=/opt/emotionai-api/venv/bin/gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 --timeout 60 --keep-alive 30
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=30
+
+# Resource limits for t2.micro (1GB RAM)
+MemoryMax=800M
+MemorySwapMax=200M
+CPUQuota=80%
+TasksMax=100
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/emotionai-api
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=emotionai-api
+
+[Install]
+WantedBy=multi-user.target

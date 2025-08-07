@@ -1,0 +1,46 @@
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+sqlalchemy>=2.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+psycopg2-binary>=2.9.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# LLM and Agent dependencies
+langchain>=0.0.300
+openai>=1.0.0
+
+
+# Additional utilities
+python-multipart>=0.0.6
+aiofiles>=23.2.1
+redis>=5.0.1
+httpx>=0.25.0
+
+# Vector database support
+chromadb>=0.4.0
+
+# Development dependencies (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+isort>=5.12.0
+
+# AWS support (if using DynamoDB)
+boto3>=1.34.0
+botocore>=1.34.0
+python-dotenv>=1.0.0
+
+# Clean Architecture Dependencies
+dependency-injector>=4.41.0
+asyncpg>=0.29.0  # For async PostgreSQL support
+greenlet>=2.0.0  # Required for SQLAlchemy async support
+
+# Database migrations
+alembic>=1.12.0
+qdrant-client>=1.7.0  # Optional vector database
+aiocache>=0.12.0  # Async caching
+httptools>=0.6.0  # Performance for uvicorn
+uvloop>=0.19.0  # Event loop for performance
+psutil>=5.9.0  # System monitoring for health checks

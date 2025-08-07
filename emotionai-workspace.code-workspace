@@ -1,0 +1,95 @@
+{
+    "folders": [
+        {
+            "name": "EmotionAI API (Backend)",
+            "path": "."
+        },
+        {
+            "name": "EmotionAI App (Flutter)",
+            "path": "../emotionai-app"
+        }
+    ],
+    "settings": {
+        "files.exclude": {
+            "**/node_modules": true,
+            "**/.git": false,
+            "**/build": true,
+            "**/.dart_tool": true,
+            "**/android/.gradle": true,
+            "**/ios/Pods": true,
+            "**/__pycache__": true,
+            "**/.pytest_cache": true
+        },
+        "search.exclude": {
+            "**/node_modules": true,
+            "**/build": true,
+            "**/.dart_tool": true,
+            "**/__pycache__": true
+        },
+        "python.defaultInterpreterPath": "./venv/bin/python",
+        "dart.flutterSdkPath": null,
+        "files.associations": {
+            "*.py": "python",
+            "*.dart": "dart",
+            "docker-compose*.yml": "yaml",
+            "Dockerfile*": "dockerfile"
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "dart-code.flutter",
+            "dart-code.dart-code",
+            "ms-vscode.vscode-docker",
+            "bradlc.vscode-tailwindcss",
+            "redhat.vscode-yaml"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Start Backend Services",
+                "type": "shell",
+                "command": "docker-compose up -d",
+                "group": "build",
+                "presentation": {
+                    "echo": true,
+                    "reveal": "always",
+                    "focus": false,
+                    "panel": "shared"
+                },
+                "options": {
+                    "cwd": "${workspaceFolder:EmotionAI API (Backend)}"
+                }
+            },
+            {
+                "label": "Stop Backend Services", 
+                "type": "shell",
+                "command": "docker-compose down",
+                "group": "build",
+                "options": {
+                    "cwd": "${workspaceFolder:EmotionAI API (Backend)}"
+                }
+            },
+            {
+                "label": "Run Flutter App",
+                "type": "shell",
+                "command": "flutter run",
+                "group": "build",
+                "options": {
+                    "cwd": "${workspaceFolder:EmotionAI App (Flutter)}"
+                }
+            },
+            {
+                "label": "Create Test Data",
+                "type": "shell",
+                "command": "docker-compose exec api python create_test_data.py",
+                "group": "test",
+                "options": {
+                    "cwd": "${workspaceFolder:EmotionAI API (Backend)}"
+                }
+            }
+        ]
+    }
+}
