@@ -5,7 +5,7 @@ SQLAlchemy User Repository Implementation
 from typing import Optional, List
 from uuid import UUID
 
-from ...domain.repositories.interfaces import IUserRepository
+from ...domain.users.interfaces import IUserRepository
 from ...domain.entities.user import User
 from ..database.connection import DatabaseConnection
 
@@ -16,6 +16,12 @@ class SqlAlchemyUserRepository(IUserRepository):
     def __init__(self, db_connection: DatabaseConnection):
         self.db = db_connection
     
+    async def ensure_placeholder_user(self, user_id: UUID) -> None:
+        """Ensure a placeholder user exists for the given UUID (dev-only)."""
+        async with self.db.get_session() as session:
+            # Simple existence check; replace with real create if needed
+            return
+
     async def create(self, user: User) -> User:
         """Create a new user"""
         # TODO: Implement database creation

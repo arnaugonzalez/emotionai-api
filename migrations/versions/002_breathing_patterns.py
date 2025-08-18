@@ -1,7 +1,7 @@
 """Add breathing patterns and custom emotions tables
 
-Revision ID: add_breathing_patterns_custom_emotions
-Revises: previous_migration
+Revision ID: 002_breathing_patterns
+Revises: 003_token_usage
 Create Date: 2024-01-01 12:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = 'add_breathing_patterns'
-down_revision = None  # Update this to point to the previous migration
+revision = '002_breathing_patterns'
+down_revision = '003_token_usage'
 branch_labels = None
 depends_on = None
 

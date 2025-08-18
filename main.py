@@ -18,7 +18,17 @@ from fastapi.exceptions import RequestValidationError
 
 from src.infrastructure.config.settings import settings
 from src.infrastructure.container import ApplicationContainer, initialize_container, shutdown_container
-from src.presentation.api.routers import chat_router, health_router, auth_router, data_router
+from src.presentation.api.routers import (
+    chat_router,
+    health_router,
+    auth_router,
+    records_router,
+    breathing_router,
+    usage_router,
+    data_router,
+    profile_router,
+    ws_router,
+)
 from src.presentation.api.middleware import (
     LoggingMiddleware, 
     ErrorHandlingMiddleware,
@@ -113,7 +123,12 @@ def create_application() -> FastAPI:
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
     app.include_router(chat_router, prefix="/api/v1", tags=["Chat"])
-    app.include_router(data_router, tags=["Data Management"])
+    app.include_router(records_router, tags=["Records"])
+    app.include_router(breathing_router, tags=["Breathing"])
+    app.include_router(usage_router, tags=["Usage"])
+    app.include_router(data_router, tags=["Data"])
+    app.include_router(profile_router, tags=["Profile"])
+    app.include_router(ws_router, tags=["Realtime"])
     
     return app
 

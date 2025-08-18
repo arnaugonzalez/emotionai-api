@@ -41,9 +41,10 @@ async def create_test_data():
             
             # Check if test user already exists
             from sqlalchemy import select
-            existing_user = session.execute(
+            result = await session.execute(
                 select(UserModel).where(UserModel.email == "test@emotionai.com")
-            ).scalar_one_or_none()
+            )
+            existing_user = result.scalar_one_or_none()
             
             if existing_user:
                 print("   ⚠️  Test user already exists, using existing user")
@@ -73,7 +74,7 @@ async def create_test_data():
                     last_login_at=datetime.now() - timedelta(hours=2)
                 )
                 session.add(test_user)
-                session.flush()  # Get the ID
+                await session.flush()  # Get the ID
                 print(f"   ✅ Created test user: {test_user.email} (ID: {test_user.id})")
             
             # Create breathing sessions
@@ -376,7 +377,7 @@ async def create_test_data():
                 print(f"   ✅ Created semantic data for tag: {tag_data['tag']}")
             
             # Commit all changes
-            session.commit()
+            await session.commit()
             print("\n🎉 Test data creation completed successfully!")
             
             # Print summary

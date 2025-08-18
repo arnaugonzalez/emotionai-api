@@ -27,16 +27,32 @@ class UserModel(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    username = Column(String(100), nullable=True)
     hashed_password = Column(String(255), nullable=False)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
     date_of_birth = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     
+    # Basic profile fields (only include what exists in your DB)
+    # phone_number = Column(String(20), nullable=True)  # Commented out - doesn't exist
+    # address = Column(Text, nullable=True)  # Commented out - doesn't exist
+    # occupation = Column(String(100), nullable=True)  # Commented out - doesn't exist
+    # emergency_contact = Column(JSON, nullable=True)  # Commented out - doesn't exist
+    # medical_conditions = Column(JSON, nullable=True)  # Commented out - doesn't exist
+    # medications = Column(JSON, nullable=True)  # Commented out - doesn't exist
+    # therapy_goals = Column(Text, nullable=True)  # Commented out - doesn't exist
+    # preferred_communication_style = Column(String(50), nullable=True)  # Commented out - doesn't exist
+    
     # Agent-related fields
     agent_personality_data = Column(JSON, nullable=True)
     user_profile_data = Column(JSON, nullable=True)
+    
+    # Therapy context and AI knowledge
+    # therapy_context = Column(JSONB, nullable=True)  # Commented out - doesn't exist
+    # therapy_preferences = Column(JSON, nullable=True)  # Commented out - doesn't exist
+    # ai_insights = Column(JSONB, nullable=True)  # Commented out - doesn't exist
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -51,8 +67,10 @@ class UserModel(Base):
     # Indexes
     __table_args__ = (
         Index('idx_users_email', 'email'),
+        Index('idx_users_username', 'username'),
         Index('idx_users_active', 'is_active'),
         Index('idx_users_created_at', 'created_at'),
+        # Index('idx_users_therapy_context', 'therapy_context', postgresql_using='gin'),  # Commented out
     )
 
 
@@ -63,18 +81,26 @@ class ConversationModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     agent_type = Column(String(50), nullable=False)
-    title = Column(String(255), nullable=True)
+    title = Column(String(255), nullable=False)
     context_data = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    message_count = Column(Integer, default=0, nullable=False)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    last_message_at = Column(DateTime(timezone=True), nullable=True)
+    last_message_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     # Relationships
     user = relationship("UserModel", back_populates="conversations")
     messages = relationship("MessageModel", back_populates="conversation", cascade="all, delete-orphan")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_conversations_user_agent', 'user_id', 'agent_type'),
+        Index('idx_conversations_active', 'is_active'),
+        Index('idx_conversations_last_message', 'last_message_at'),
+    )
 
 
 class MessageModel(Base):
@@ -83,9 +109,10 @@ class MessageModel(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id'), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     content = Column(Text, nullable=False)
-    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
-    message_metadata = Column(JSON, nullable=True)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
+    message_type = Column(String(20), nullable=False, index=True)  # 'user', 'assistant', 'system'
+    message_metadata = Column(JSON, nullable=True)
     
     # Intelligent tagging system
     tags = Column(JSONB, nullable=True)  # Semantic tags extracted from content
@@ -93,16 +120,18 @@ class MessageModel(Base):
     processed_for_tags = Column(Boolean, default=False, nullable=False)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     
     # Relationships
     conversation = relationship("ConversationModel", back_populates="messages")
     
     # Indexes for tag-based search
     __table_args__ = (
+        Index('idx_messages_conversation', 'conversation_id'),
+        Index('idx_messages_user', 'user_id'),
+        Index('idx_messages_type', 'message_type'),
+        Index('idx_messages_timestamp', 'timestamp'),
         Index('idx_messages_tags', 'tags', postgresql_using='gin'),
-        Index('idx_messages_role_tags', 'role', 'tags'),
-        Index('idx_messages_created_at', 'created_at'),
     )
 
 
@@ -333,3 +362,28 @@ class TagSemanticModel(Base):
         Index('idx_tag_semantics_similar_tags', 'similar_tags', postgresql_using='gin'),
         UniqueConstraint('tag', name='uq_tag_semantics_tag'),
     ) 
+
+
+class TokenUsageModel(Base):
+    """Tracks LLM token usage per user and interaction"""
+    __tablename__ = 'token_usage'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    interaction_type = Column(String(50), nullable=False)  # chat, tagging_emotional_record, tagging_breathing_session
+    model = Column(String(100), nullable=True)
+    data_id = Column(String(100), nullable=True)  # conversation_id, record_id, etc.
+    
+    tokens_total = Column(Integer, nullable=False)
+    tokens_prompt = Column(Integer, nullable=False, default=0)
+    tokens_completion = Column(Integer, nullable=False, default=0)
+    
+    usage_metadata = Column(JSONB, nullable=True)  # renamed from 'metadata' to avoid SQLAlchemy reserved name conflict
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    
+    user = relationship('UserModel')
+    
+    __table_args__ = (
+        Index('idx_token_usage_user_created', 'user_id', 'created_at'),
+        Index('idx_token_usage_type', 'interaction_type'),
+    )

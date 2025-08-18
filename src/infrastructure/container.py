@@ -11,36 +11,39 @@ import asyncio
 import logging
 
 # Domain interfaces
-from ..domain.repositories.interfaces import (
-    IUserRepository,
-    IEmotionalRecordRepository, 
-    IBreathingSessionRepository,
-    IAgentConversationRepository,
-    IEventRepository,
-    IAnalyticsRepository
-)
+from ..domain.users.interfaces import IUserRepository
+from ..domain.events.interfaces import IEventRepository
+from ..domain.records.interfaces import IEmotionalRecordRepository
+from ..domain.breathing.interfaces import IBreathingSessionRepository
+from ..domain.chat.interfaces import IAgentConversationRepository
+from ..domain.analytics.interfaces import IAnalyticsRepository
 
 # Application services
-from ..application.use_cases.agent_chat_use_case import AgentChatUseCase
+from ..application.chat.use_cases.agent_chat_use_case import AgentChatUseCase
+from ..application.usage.use_cases.get_monthly_usage_use_case import GetMonthlyUsageUseCase
 from ..application.services.agent_service import IAgentService
 from ..application.services.event_bus import IEventBus
 from ..application.services.tagging_service import ITaggingService
 from ..application.services.user_knowledge_service import IUserKnowledgeService
 from ..application.services.similarity_search_service import ISimilaritySearchService
+from ..application.services.profile_service import IProfileService
 
 # Infrastructure implementations
 from .repositories.sqlalchemy_user_repository import SqlAlchemyUserRepository
-from .repositories.sqlalchemy_emotional_repository import SqlAlchemyEmotionalRepository
-from .repositories.sqlalchemy_breathing_repository import SqlAlchemyBreathingRepository
-from .repositories.sqlalchemy_conversation_repository import SqlAlchemyConversationRepository
-from .repositories.sqlalchemy_event_repository import SqlAlchemyEventRepository
-from .repositories.sqlalchemy_analytics_repository import SqlAlchemyAnalyticsRepository
+from .records.repositories.sqlalchemy_emotional_repository import SqlAlchemyEmotionalRepository
+from .breathing.repositories.sqlalchemy_breathing_repository import SqlAlchemyBreathingRepository
+from .conversations.repositories.sqlalchemy_conversation_repository import SqlAlchemyConversationRepository
+from .events.repositories.sqlalchemy_event_repository import SqlAlchemyEventRepository
+from .analytics.repositories.sqlalchemy_analytics_repository import SqlAlchemyAnalyticsRepository
 
 from .services.langchain_agent_service import LangChainAgentService
+from .services.openai_llm_service import OpenAILLMService
 from .services.redis_event_bus import RedisEventBus
-from .services.openai_tagging_service import OpenAITaggingService
+from .tagging.services.openai_tagging_service import OpenAITaggingService
+from .usage.repositories.sqlalchemy_token_usage_repository import SqlAlchemyTokenUsageRepository
 from .services.mock_user_knowledge_service import MockUserKnowledgeService
 from .services.mock_similarity_search_service import MockSimilaritySearchService
+from .services.profile_service import ProfileService
 
 from .config.settings import Settings
 from .database.connection import DatabaseConnection
@@ -70,6 +73,7 @@ class ApplicationContainer:
     conversation_repository: IAgentConversationRepository
     event_repository: IEventRepository
     analytics_repository: IAnalyticsRepository
+    token_usage_repository: Any
     
     # Services
     agent_service: IAgentService
@@ -77,9 +81,11 @@ class ApplicationContainer:
     tagging_service: ITaggingService
     user_knowledge_service: IUserKnowledgeService
     similarity_search_service: ISimilaritySearchService
+    profile_service: IProfileService
     
     # Use cases
     agent_chat_use_case: AgentChatUseCase
+    get_monthly_usage_use_case: Any
     
     @classmethod
     async def create(cls, config_overrides: Dict[str, Any] = None) -> 'ApplicationContainer':
@@ -106,25 +112,40 @@ class ApplicationContainer:
         conversation_repository = SqlAlchemyConversationRepository(database)
         event_repository = SqlAlchemyEventRepository(database)
         analytics_repository = SqlAlchemyAnalyticsRepository(database)
+        token_usage_repository = SqlAlchemyTokenUsageRepository(database)
         
         # 4. Initialize external services
         event_bus = RedisEventBus(settings.redis_url)
         
         # 5. Initialize application services
+        # Initialize OpenAI LLM service
+        llm_service = OpenAILLMService(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model
+        )
+        
+        # Initialize agent service with real LLM and conversation repository
         agent_service = LangChainAgentService(
-            llm_factory=llm_factory,
+            llm_service=llm_service,
+            conversation_repository=conversation_repository,
+            user_repository=user_repository,
+            emotional_repository=emotional_repository,
             settings=settings
         )
         
         # Initialize intelligent tagging services
         tagging_service = OpenAITaggingService(
             api_key=settings.openai_api_key,
-            model=settings.default_llm_model
+            model=settings.openai_model,
+            token_usage_repo=token_usage_repository
         )
         
         # Initialize mock services (to be replaced with full implementations)
         user_knowledge_service = MockUserKnowledgeService()
         similarity_search_service = MockSimilaritySearchService()
+        
+        # Initialize profile service
+        profile_service = ProfileService(database)
         
         # 6. Initialize use cases (business logic orchestration)
         agent_chat_use_case = AgentChatUseCase(
@@ -138,6 +159,7 @@ class ApplicationContainer:
             user_knowledge_service=user_knowledge_service,
             similarity_search_service=similarity_search_service
         )
+        get_monthly_usage_use_case = GetMonthlyUsageUseCase(token_usage_repository)
         
         # 7. Start background services
         await event_bus.start()
@@ -157,7 +179,10 @@ class ApplicationContainer:
             tagging_service=tagging_service,
             user_knowledge_service=user_knowledge_service,
             similarity_search_service=similarity_search_service,
-            agent_chat_use_case=agent_chat_use_case
+            profile_service=profile_service,
+            agent_chat_use_case=agent_chat_use_case,
+            token_usage_repository=token_usage_repository,
+            get_monthly_usage_use_case=get_monthly_usage_use_case
         )
         
         logger.info("Application container initialized successfully")
@@ -193,9 +218,14 @@ class ApplicationContainer:
         try:
             # Check database
             db_healthy = await self.database.health_check()
-            health_status["components"]["database"] = {
-                "status": "healthy" if db_healthy else "unhealthy"
-            }
+            db_details: Dict[str, Any] = {"status": "healthy" if db_healthy else "unhealthy"}
+            if db_healthy:
+                # Include entity counts for observability (non-fatal if fails)
+                try:
+                    db_details["entity_counts"] = await self.database.get_entity_counts()
+                except Exception:
+                    pass
+            health_status["components"]["database"] = db_details
             
             # Check LLM providers
             llm_status = await self.llm_factory.health_check()

@@ -11,7 +11,8 @@ from typing import List, Dict, Any, Optional
 from uuid import UUID
 
 import openai
-from ...application.services.tagging_service import ITaggingService, TagExtractionResult
+from ...application.tagging.services.tagging_service import ITaggingService, TagExtractionResult
+from ...domain.usage.interfaces import ITokenUsageRepository
 
 
 logger = logging.getLogger(__name__)
@@ -26,9 +27,10 @@ class OpenAITaggingService(ITaggingService):
         'hurt myself', 'self harm', 'want to die', 'better off dead'
     ]
     
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", token_usage_repo: ITokenUsageRepository | None = None):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
+        self.token_usage_repo = token_usage_repo
         
         # System prompts for different content types
         self.message_system_prompt = """
@@ -148,6 +150,25 @@ Respond ONLY with a JSON object containing:
             result_text = response.choices[0].message.content.strip()
             result_data = json.loads(result_text)
             
+            # Log token usage if available
+            try:
+                if self.token_usage_repo and hasattr(response, "usage") and response.usage:
+                    total = getattr(response.usage, "total_tokens", None) or response.usage.get("total_tokens", 0)
+                    prompt = getattr(response.usage, "prompt_tokens", None) or response.usage.get("prompt_tokens", 0)
+                    completion = getattr(response.usage, "completion_tokens", None) or response.usage.get("completion_tokens", 0)
+                    await self.token_usage_repo.log_usage(
+                        user_id=user_context.get("user_id") if user_context else None,
+                        interaction_type="tagging_message",
+                        total_tokens=int(total or 0),
+                        tokens_prompt=int(prompt or 0),
+                        tokens_completion=int(completion or 0),
+                        model=self.model,
+                        data_id=None,
+                        metadata={"source": "tagging_service"}
+                    )
+            except Exception as log_e:
+                logger.warning(f"Failed to log token usage (message): {log_e}")
+            
             return TagExtractionResult(
                 tags=result_data.get("tags", []),
                 confidence=result_data.get("confidence", 0.0),
@@ -200,6 +221,25 @@ Notes: {notes or 'No additional notes'}
             result_text = response.choices[0].message.content.strip()
             result_data = json.loads(result_text)
             
+            # Log token usage if available
+            try:
+                if self.token_usage_repo and hasattr(response, "usage") and response.usage:
+                    total = getattr(response.usage, "total_tokens", None) or response.usage.get("total_tokens", 0)
+                    prompt = getattr(response.usage, "prompt_tokens", None) or response.usage.get("prompt_tokens", 0)
+                    completion = getattr(response.usage, "completion_tokens", None) or response.usage.get("completion_tokens", 0)
+                    await self.token_usage_repo.log_usage(
+                        user_id=user_context.get("user_id") if user_context else None,
+                        interaction_type="tagging_emotional_record",
+                        total_tokens=int(total or 0),
+                        tokens_prompt=int(prompt or 0),
+                        tokens_completion=int(completion or 0),
+                        model=self.model,
+                        data_id=None,
+                        metadata={"emotion": emotion, "intensity": intensity}
+                    )
+            except Exception as log_e:
+                logger.warning(f"Failed to log token usage (emotional): {log_e}")
+            
             return TagExtractionResult(
                 tags=result_data.get("tags", []),
                 confidence=result_data.get("confidence", 0.0),
@@ -249,6 +289,25 @@ Notes: {notes or 'No additional notes'}
             
             result_text = response.choices[0].message.content.strip()
             result_data = json.loads(result_text)
+            
+            # Log token usage if available
+            try:
+                if self.token_usage_repo and hasattr(response, "usage") and response.usage:
+                    total = getattr(response.usage, "total_tokens", None) or response.usage.get("total_tokens", 0)
+                    prompt = getattr(response.usage, "prompt_tokens", None) or response.usage.get("prompt_tokens", 0)
+                    completion = getattr(response.usage, "completion_tokens", None) or response.usage.get("completion_tokens", 0)
+                    await self.token_usage_repo.log_usage(
+                        user_id=user_context.get("user_id") if user_context else None,
+                        interaction_type="tagging_breathing_session",
+                        total_tokens=int(total or 0),
+                        tokens_prompt=int(prompt or 0),
+                        tokens_completion=int(completion or 0),
+                        model=self.model,
+                        data_id=None,
+                        metadata={"pattern_name": pattern_name, "duration_minutes": duration_minutes}
+                    )
+            except Exception as log_e:
+                logger.warning(f"Failed to log token usage (breathing): {log_e}")
             
             return TagExtractionResult(
                 tags=result_data.get("tags", []),

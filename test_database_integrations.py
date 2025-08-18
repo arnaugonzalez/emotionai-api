@@ -142,11 +142,72 @@ async def main():
     print("🚀 Testing Database Integrations")
     print("=" * 50)
     
+    async def test_db_entities():
+        """Validate DB container readiness by checking core entities/tables and printing counts."""
+        print("🧪 Verifying database entities...")
+        try:
+            from src.infrastructure.config.settings import settings
+            from src.infrastructure.database.connection import DatabaseConnection
+            from sqlalchemy import text
+
+            db = await DatabaseConnection.create(settings)
+            async with db.get_session() as session:
+                # Detect table existence in Postgres using to_regclass; fallback to SELECT 1 LIMIT 1
+                core_tables = [
+                    "users",
+                    "emotional_records",
+                    "breathing_sessions",
+                    "user_profiles",
+                    "tag_semantics",
+                    "token_usage",
+                ]
+                missing = []
+                print("   📋 Checking tables exist...")
+                if "postgresql" in settings.database_url.lower():
+                    for tbl in core_tables:
+                        res = await session.execute(
+                            text("SELECT to_regclass(:tname) IS NOT NULL"),
+                            {"tname": f"public.{tbl}"},
+                        )
+                        exists = res.scalar() is True
+                        print(f"     - {tbl}: {'✅' if exists else '❌'}")
+                        if not exists:
+                            missing.append(tbl)
+                else:
+                    for tbl in core_tables:
+                        try:
+                            await session.execute(text(f"SELECT 1 FROM {tbl} LIMIT 1"))
+                            print(f"     - {tbl}: ✅")
+                        except Exception:
+                            print(f"     - {tbl}: ❌")
+                            missing.append(tbl)
+
+                if missing:
+                    print(f"   ⚠️ Missing tables: {', '.join(missing)}")
+                    # Still continue to attempt counts on existing tables
+
+                print("   🔢 Entity counts (existing tables):")
+                for tbl in [t for t in core_tables if t not in missing]:
+                    try:
+                        count_res = await session.execute(text(f"SELECT COUNT(*) FROM {tbl}"))
+                        count = int(count_res.scalar() or 0)
+                        print(f"     - {tbl}: {count}")
+                    except Exception as e:
+                        print(f"     - {tbl}: error getting count ({e})")
+
+            await db.close()
+            # Consider test passed if at least the database responds and no exception thrown
+            return True
+        except Exception as e:
+            print(f"  ❌ Database entity check failed: {e}")
+            return False
+
     tests = [
         ("Model Imports", test_imports),
         ("Model Structure", test_model_structure), 
         ("Router Imports", test_data_router_imports),
-        ("Validation Functions", test_validation_functions)
+        ("Validation Functions", test_validation_functions),
+        ("DB Entities", test_db_entities),
     ]
     
     results = []

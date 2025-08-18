@@ -9,13 +9,11 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional
 from uuid import UUID
 
-from ...domain.repositories.interfaces import (
-    IUserRepository, 
-    IEmotionalRecordRepository, 
-    IBreathingSessionRepository,
-    IAgentConversationRepository,
-    IEventRepository
-)
+from ...domain.users.interfaces import IUserRepository
+from ...domain.records.interfaces import IEmotionalRecordRepository
+from ...domain.breathing.interfaces import IBreathingSessionRepository
+from ...domain.chat.interfaces import IAgentConversationRepository
+from ...domain.events.interfaces import IEventRepository
 from ...domain.entities.user import User
 from ...domain.events.domain_events import AgentConversationStartedEvent, UserDataTaggedEvent
 from ..services.agent_service import IAgentService

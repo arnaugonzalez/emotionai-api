@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from ....infrastructure.container import ApplicationContainer
+from ....infrastructure.database.models import UserModel
+from sqlalchemy import select
 from ....infrastructure.config.settings import settings
 
 router = APIRouter()
@@ -23,8 +25,27 @@ def get_container(request: Request) -> ApplicationContainer:
 
 
 @router.get("/", summary="Basic health check")
-async def health_check():
-    """Basic health check endpoint"""
+async def health_check(request: Request, container: ApplicationContainer = Depends(get_container)):
+    """Basic health check endpoint with dev placeholder ensure."""
+    if settings.environment != "production":
+        from uuid import UUID
+        placeholder_id = UUID("550e8400-e29b-41d4-a716-446655440000")
+        db = container.database
+        async with db.get_session() as session:
+            res = await session.execute(select(UserModel).where(UserModel.id == placeholder_id))
+            user = res.scalar_one_or_none()
+            if user is None:
+                user = UserModel(
+                    id=placeholder_id,
+                    email="dev+placeholder@example.com",
+                    hashed_password="dev",
+                    first_name="Dev",
+                    last_name="User",
+                    is_active=True,
+                    is_verified=False,
+                )
+                session.add(user)
+                await session.commit()
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),

@@ -12,10 +12,11 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U emotionai -d emotionai_db"]
+      # Check Postgres readiness and verify core table existence (users)
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} && psql -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc \"SELECT to_regclass('public.users') IS NOT NULL\" | grep -q t"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - emotionai-network
 

@@ -153,15 +153,101 @@ class DatabaseConnection:
         return self.session_factory()
     
     async def health_check(self) -> bool:
-        """Check database health"""
+        """Check database health with schema/entity verification.
+
+        This performs a basic connectivity test and then validates that
+        core tables exist. If tables exist but contain no rows, the
+        health check still returns True (empty databases are acceptable
+        on first run), but missing tables will cause a failure.
+        """
         try:
             async with self.get_session() as session:
-                # Simple query to test connection
+                # 1) Basic connectivity
                 result = await session.execute(text("SELECT 1"))
-                return result.scalar() == 1
+                if result.scalar() != 1:
+                    return False
+
+                # 2) Verify core tables exist depending on dialect
+                core_tables = [
+                    "users",
+                    "emotional_records",
+                    "breathing_sessions",
+                    "user_profiles",
+                    "tag_semantics",
+                    "token_usage",
+                ]
+
+                database_url = self.settings.database_url.lower()
+                missing_tables = []
+
+                if "postgresql" in database_url:
+                    # Use to_regclass to probe for table existence
+                    for table_name in core_tables:
+                        probe = await session.execute(
+                            text("SELECT to_regclass(:tname) IS NOT NULL"),
+                            {"tname": f"public.{table_name}"},
+                        )
+                        exists = probe.scalar() is True
+                        if not exists:
+                            missing_tables.append(table_name)
+                elif "sqlite" in database_url:
+                    for table_name in core_tables:
+                        probe = await session.execute(
+                            text(
+                                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=:tname"
+                            ),
+                            {"tname": table_name},
+                        )
+                        exists = probe.first() is not None
+                        if not exists:
+                            missing_tables.append(table_name)
+                else:
+                    # Fallback: attempt a trivial count from each table
+                    for table_name in core_tables:
+                        try:
+                            await session.execute(text(f"SELECT 1 FROM {table_name} LIMIT 1"))
+                        except Exception:
+                            missing_tables.append(table_name)
+
+                if missing_tables:
+                    logger.error(
+                        "Database health check failed: missing tables %s",
+                        ", ".join(missing_tables),
+                    )
+                    return False
+
+                return True
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
             return False
+
+    async def get_entity_counts(self) -> Dict[str, int]:
+        """Return counts for key entity tables for diagnostics.
+
+        This is best-effort and should not raise; on error returns empty dict.
+        """
+        try:
+            async with self.get_session() as session:
+                counts: Dict[str, int] = {}
+                tables = [
+                    "users",
+                    "emotional_records",
+                    "breathing_sessions",
+                    "user_profiles",
+                    "tag_semantics",
+                    "token_usage",
+                ]
+                for table in tables:
+                    try:
+                        result = await session.execute(text(f"SELECT COUNT(*) FROM {table}"))
+                        counts[table] = int(result.scalar() or 0)
+                    except Exception:
+                        # Table may not exist yet; skip
+                        counts[table] = -1
+                return counts
+        except Exception as e:
+            logger.error(f"Failed to get entity counts: {e}")
+            return {}
     
     async def create_tables(self) -> None:
         """Create all database tables"""
@@ -228,3 +314,27 @@ class DatabaseConnection:
     def is_connected(self) -> bool:
         """Check if database is connected"""
         return self._is_connected 
+
+# Global database connection instance
+_database_connection: Optional[DatabaseConnection] = None
+
+def get_database_connection() -> DatabaseConnection:
+    """Get the global database connection instance"""
+    global _database_connection
+    if _database_connection is None:
+        raise RuntimeError("Database connection not initialized. Call initialize_database() first.")
+    return _database_connection
+
+async def initialize_database(settings: Settings) -> DatabaseConnection:
+    """Initialize the global database connection"""
+    global _database_connection
+    if _database_connection is None:
+        _database_connection = await DatabaseConnection.create(settings)
+    return _database_connection
+
+async def close_database() -> None:
+    """Close the global database connection"""
+    global _database_connection
+    if _database_connection:
+        await _database_connection.close()
+        _database_connection = None 

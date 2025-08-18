@@ -8,6 +8,7 @@ Settings are loaded from environment variables and configuration files.
 from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any
 import os
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -19,8 +20,14 @@ class Settings(BaseSettings):
     version: str = "2.0.0"
     environment: str = "development"
     
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+        env_prefix = ""
+        extra = "ignore"  # Ignore extra fields instead of raising errors
+    
     # Database
-    database_url: str = "postgresql://user:password@localhost/emotionai"
+    database_url: str = "postgresql://user:password@localhost/emotionai_db"
     database_echo: bool = False
     database_pool_size: int = 20
     database_max_overflow: int = 30
@@ -37,10 +44,10 @@ class Settings(BaseSettings):
     qdrant_api_key: Optional[str] = None
     
     # LLM Configuration
-    openai_api_key: Optional[str] = None
-    default_llm_model: str = "gpt-4o-mini"
-    max_tokens: int = 500
-    temperature: float = 0.7
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4", env="OPENAI_MODEL")
+    openai_max_tokens: int = Field(default=500, env="OPENAI_MAX_TOKENS")
+    openai_temperature: float = Field(default=0.7, env="OPENAI_TEMPERATURE")
     llm_timeout: int = 30
     
     # Authentication
@@ -123,9 +130,9 @@ class Settings(BaseSettings):
         """Get LLM configuration dictionary"""
         return {
             "openai_api_key": self.openai_api_key,
-            "default_model": self.default_llm_model,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
+            "openai_model": self.openai_model,
+            "openai_max_tokens": self.openai_max_tokens,
+            "openai_temperature": self.openai_temperature,
             "timeout": self.llm_timeout
         }
     
@@ -144,11 +151,6 @@ class Settings(BaseSettings):
         
         if required_settings:
             raise ValueError(f"Missing required settings: {', '.join(required_settings)}")
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        env_prefix = ""
 
 
 def create_settings(config_overrides: Optional[Dict[str, Any]] = None) -> Settings:
