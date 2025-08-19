@@ -35,24 +35,24 @@ class UserModel(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     
-    # Basic profile fields (only include what exists in your DB)
-    # phone_number = Column(String(20), nullable=True)  # Commented out - doesn't exist
-    # address = Column(Text, nullable=True)  # Commented out - doesn't exist
-    # occupation = Column(String(100), nullable=True)  # Commented out - doesn't exist
-    # emergency_contact = Column(JSON, nullable=True)  # Commented out - doesn't exist
-    # medical_conditions = Column(JSON, nullable=True)  # Commented out - doesn't exist
-    # medications = Column(JSON, nullable=True)  # Commented out - doesn't exist
-    # therapy_goals = Column(Text, nullable=True)  # Commented out - doesn't exist
-    # preferred_communication_style = Column(String(50), nullable=True)  # Commented out - doesn't exist
+    # Extended profile fields (added in migration 005)
+    phone_number = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
+    occupation = Column(String(100), nullable=True)
+    emergency_contact = Column(JSON, nullable=True)
+    medical_conditions = Column(JSON, nullable=True)
+    medications = Column(JSON, nullable=True)
+    therapy_goals = Column(Text, nullable=True)
+    preferred_communication_style = Column(String(50), nullable=True)
     
-    # Agent-related fields
-    agent_personality_data = Column(JSON, nullable=True)
-    user_profile_data = Column(JSON, nullable=True)
+    # Therapy context and AI knowledge (added in migration 005)
+    therapy_context = Column(JSONB, nullable=True)  # What AI knows about the user
+    therapy_preferences = Column(JSON, nullable=True)  # User's therapy preferences
+    ai_insights = Column(JSONB, nullable=True)  # AI-generated insights about user
     
-    # Therapy context and AI knowledge
-    # therapy_context = Column(JSONB, nullable=True)  # Commented out - doesn't exist
-    # therapy_preferences = Column(JSON, nullable=True)  # Commented out - doesn't exist
-    # ai_insights = Column(JSONB, nullable=True)  # Commented out - doesn't exist
+    # Legacy JSON columns (will be replaced by new tables)
+    agent_personality_data = Column(JSON, nullable=True)  # Legacy - will be moved to agent_personality table
+    user_profile_data = Column(JSON, nullable=True)  # Legacy - will be moved to user_profile_data table
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -63,6 +63,8 @@ class UserModel(Base):
     conversations = relationship("ConversationModel", back_populates="user", cascade="all, delete-orphan")
     emotional_records = relationship("EmotionalRecordModel", back_populates="user", cascade="all, delete-orphan")
     breathing_sessions = relationship("BreathingSessionModel", back_populates="user", cascade="all, delete-orphan")
+    profile_data = relationship("UserProfileDataModel", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    agent_personality = relationship("AgentPersonalityModel", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Indexes
     __table_args__ = (
@@ -70,7 +72,82 @@ class UserModel(Base):
         Index('idx_users_username', 'username'),
         Index('idx_users_active', 'is_active'),
         Index('idx_users_created_at', 'created_at'),
-        # Index('idx_users_therapy_context', 'therapy_context', postgresql_using='gin'),  # Commented out
+        Index('idx_users_therapy_context', 'therapy_context', postgresql_using='gin'),
+    )
+
+
+class UserProfileDataModel(Base):
+    """SQLAlchemy model for extended user profile data"""
+    __tablename__ = 'user_profile_data'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, unique=True)
+    
+    # Personality and preferences
+    personality_type = Column(String(20), nullable=True)  # MBTI type
+    relaxation_time = Column(String(50), nullable=True)  # Morning, Afternoon, Evening, Night, Various times
+    selfcare_frequency = Column(String(50), nullable=True)  # Multiple times a day, Once a day, etc.
+    relaxation_tools = Column(ARRAY(String), nullable=True)  # Array of selected tools
+    has_previous_mental_health_app_experience = Column(Boolean, nullable=True)
+    therapy_chat_history_preference = Column(String(50), nullable=True)
+    country = Column(String(100), nullable=True)
+    gender = Column(String(20), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("UserModel", back_populates="profile_data")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_user_profile_data_user_id', 'user_id'),
+        Index('idx_user_profile_data_personality', 'personality_type'),
+        Index('idx_user_profile_data_country', 'country'),
+    )
+
+
+class AgentPersonalityModel(Base):
+    """SQLAlchemy model for AI agent personality and therapy context"""
+    __tablename__ = 'agent_personality'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, unique=True)
+    
+    # Agent personality settings
+    agent_style = Column(String(50), nullable=True)  # Supportive, Direct, Analytical, etc.
+    communication_tone = Column(String(50), nullable=True)  # Formal, Casual, Friendly, etc.
+    therapy_approach = Column(String(50), nullable=True)  # CBT, DBT, Humanistic, etc.
+    
+    # User context for AI
+    mood_patterns = Column(Text, nullable=True)
+    stress_triggers = Column(Text, nullable=True)
+    coping_strategies = Column(Text, nullable=True)
+    progress_areas = Column(Text, nullable=True)
+    
+    # Therapy session preferences
+    session_duration = Column(Integer, nullable=True)  # minutes
+    session_frequency = Column(String(50), nullable=True)
+    preferred_topics = Column(ARRAY(String), nullable=True)
+    
+    # AI insights and learning
+    conversation_history_summary = Column(Text, nullable=True)
+    user_response_patterns = Column(Text, nullable=True)
+    effective_interventions = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationships
+    user = relationship("UserModel", back_populates="agent_personality")
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_agent_personality_user_id', 'user_id'),
+        Index('idx_agent_personality_style', 'agent_style'),
+        Index('idx_agent_personality_approach', 'therapy_approach'),
     )
 
 
