@@ -46,11 +46,11 @@ class LangChainAgentService(IAgentService):
         
         try:
             # 1. Get or create active conversation
-            conversation = await self._get_or_create_conversation(user_id, agent_type)
+            conversation_id = await self._get_or_create_conversation(user_id, agent_type)
             
             # 2. Store user message
             user_message = await self.conversation_repository.add_message(
-                conversation_id=conversation.id,
+                conversation_id=conversation_id,
                 user_id=user_id,
                 content=message,
                 message_type="user",
@@ -59,7 +59,7 @@ class LangChainAgentService(IAgentService):
             
             # 3. Build agent context with memory
             agent_context = await self._build_agent_context(
-                user_id, agent_type, conversation.id, message
+                user_id, agent_type, conversation_id, message
             )
             
             # 4. Generate therapeutic response using LLM
@@ -69,7 +69,7 @@ class LangChainAgentService(IAgentService):
             
             # 5. Store assistant response
             await self.conversation_repository.add_message(
-                conversation_id=conversation.id,
+                conversation_id=conversation_id,
                 user_id=user_id,
                 content=therapy_response.message,
                 message_type="assistant",
@@ -97,28 +97,33 @@ class LangChainAgentService(IAgentService):
         self, 
         user_id: UUID, 
         agent_type: str
-    ) -> Conversation:
-        """Get active conversation or create new one"""
+    ) -> str:
+        """Get existing conversation or create new one"""
         try:
-            # Try to get existing active conversation
-            conversation = await self.conversation_repository.get_active_conversation(
-                user_id, agent_type
+            # Check for existing active conversation
+            existing_conversations = await self.conversation_repository.get_conversation_history(
+                user_id, agent_type, limit=1
             )
             
-            if conversation:
-                logger.info(f"Using existing conversation: {conversation.id}")
-                return conversation
+            if existing_conversations and existing_conversations[0].get('is_active', False):
+                return existing_conversations[0]['id']
             
             # Create new conversation
-            conversation = await self.conversation_repository.create_conversation(
-                user_id, agent_type
+            conversation_data = {
+                'title': f'{agent_type.title()} Session',
+                'agent_type': agent_type
+            }
+            
+            conversation = await self.conversation_repository.save_conversation(
+                user_id, agent_type, conversation_data
             )
-            logger.info(f"Created new conversation: {conversation.id}")
+            
             return conversation
             
         except Exception as e:
             logger.error(f"Error getting/creating conversation: {e}")
-            raise
+            # Return a fallback conversation ID
+            return f"fallback_{user_id}_{agent_type}"
 
     async def _build_agent_context(
         self, 

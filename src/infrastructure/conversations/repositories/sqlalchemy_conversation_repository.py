@@ -6,7 +6,7 @@ Handles persistence of conversation data for agent memory and context.
 
 import logging
 from typing import List, Optional, Dict, Any
-from uuid import UUID
+import uuid
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....domain.chat.interfaces import IAgentConversationRepository
 from ....domain.chat.entities import Conversation, Message
 from ...database.models import ConversationModel, MessageModel
+from ....domain.chat.entities import Conversation as ConversationEntity, Message as MessageEntity
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
 
     async def save_conversation(
         self, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         agent_type: str, 
         conversation_data: Dict[str, Any]
     ) -> str:
@@ -34,7 +35,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
             title = conversation_data.get('title') or f"{agent_type.title()} Session - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
             
             conversation = ConversationModel(
-                id=str(UUID.uuid4()),
+                id=str(uuid.uuid4()),
                 user_id=str(user_id),
                 agent_type=agent_type,
                 title=title,
@@ -49,7 +50,8 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
                 await session.refresh(conversation)
             
             logger.info(f"Created conversation {conversation.id} for user {user_id}")
-            return conversation.id
+            # Ensure we return a string ID
+            return str(conversation.id)
             
         except Exception as e:
             logger.error(f"Error creating conversation: {e}")
@@ -58,7 +60,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
     async def add_message(
         self, 
         conversation_id: str, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         content: str, 
         message_type: str,
         metadata: Dict[str, Any] = None
@@ -66,7 +68,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
         """Add a message to a conversation"""
         try:
             message = MessageModel(
-                id=str(UUID.uuid4()),
+                id=str(uuid.uuid4()),
                 conversation_id=conversation_id,
                 user_id=str(user_id),
                 content=content,
@@ -101,7 +103,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
 
     async def get_conversation_history(
         self, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         agent_type: str, 
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
@@ -123,7 +125,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
             
             return [
                 {
-                    'id': conv.id,
+                    'id': str(conv.id),
                     'user_id': conv.user_id,
                     'agent_type': conv.agent_type,
                     'title': conv.title,
@@ -166,7 +168,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
 
     async def get_active_conversation(
         self, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         agent_type: str
     ) -> Optional[Conversation]:
         """Get the active conversation for a user and agent type"""
@@ -191,7 +193,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
 
     async def get_conversation_summary(
         self, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         agent_type: str
     ) -> Optional[str]:
         """Get a summary of the most recent conversation"""
@@ -222,7 +224,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
 
     async def get_recent_context(
         self, 
-        user_id: UUID, 
+        user_id: uuid.UUID, 
         agent_type: str, 
         message_count: int = 10
     ) -> List[Message]:
@@ -287,11 +289,20 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
             logger.error(f"Error getting message count: {e}")
             return 0
 
+    def _safe_uuid_convert(self, uuid_obj) -> uuid.UUID:
+        """Safely convert various UUID types to standard uuid.UUID"""
+        if isinstance(uuid_obj, uuid.UUID):
+            return uuid_obj
+        elif hasattr(uuid_obj, '__str__'):
+            return uuid.UUID(str(uuid_obj))
+        else:
+            raise ValueError(f"Cannot convert {type(uuid_obj)} to UUID")
+
     def _to_domain(self, model: ConversationModel) -> Conversation:
         """Convert SQLAlchemy model to domain entity"""
         return Conversation(
             id=model.id,
-            user_id=UUID(model.user_id),
+            user_id=self._safe_uuid_convert(model.user_id),
             agent_type=model.agent_type,
             title=model.title,
             created_at=model.created_at,
@@ -305,7 +316,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
         return Message(
             id=model.id,
             conversation_id=model.conversation_id,
-            user_id=UUID(model.user_id),
+            user_id=self._safe_uuid_convert(model.user_id),
             content=model.content,
             message_type=model.message_type,
             metadata=model.message_metadata,
