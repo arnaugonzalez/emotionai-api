@@ -57,6 +57,7 @@ class UserProfileResponse(BaseModel):
     emergency_contact: Optional[EmergencyContact] = Field(None, description="Emergency contact")
     medical_info: Optional[MedicalInfo] = Field(None, description="Medical information")
     therapy_preferences: Optional[TherapyPreferences] = Field(None, description="Therapy preferences")
+    user_profile_data: Optional[Dict[str, Any]] = Field(None, description="Additional profile data (personality type, preferences, etc.)")
     is_profile_complete: bool = Field(..., description="Whether profile is complete")
     created_at: datetime = Field(..., description="Profile creation date")
     updated_at: datetime = Field(..., description="Profile last update date")
