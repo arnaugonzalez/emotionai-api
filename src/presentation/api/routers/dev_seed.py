@@ -68,6 +68,20 @@ async def load_preset_data(
         {"emotion": "hopeful", "intensity": 7},
     ]
 
+    # Default color mapping for standard emotions (Flutter ARGB ints)
+    emotion_colors = {
+        "calm": 0xFF80CBC4,         # teal lighten-3
+        "happy": 0xFFFFEB3B,        # yellow
+        "anxious": 0xFFFFB74D,      # orange lighten-1
+        "stressed": 0xFFEF5350,     # red lighten-1
+        "grateful": 0xFF66BB6A,     # green lighten-1
+        "tired": 0xFF90A4AE,        # blueGrey lighten-2
+        "focused": 0xFF42A5F5,      # blue lighten-1
+        "content": 0xFF9CCC65,      # light green lighten-1
+        "overwhelmed": 0xFFAB47BC,  # purple lighten-1
+        "hopeful": 0xFF26C6DA,      # cyan lighten-1
+    }
+
     try:
         async with db.get_session() as session:
             # Ensure user exists (dev placeholder allowed)
@@ -162,7 +176,10 @@ async def load_preset_data(
                         intensity=int(emo["intensity"]),
                         triggers=["seed"],
                         notes=f"Seeded record {idx+1}. {seed_marker}",
-                        context_data={"source": "dev_seed"},
+                        context_data={
+                            "source": "dev_seed",
+                            "color": int(emotion_colors.get(emo["emotion"], 0xFF9E9E9E)),
+                        },
                         tags=[],
                         tag_confidence=None,
                         processed_for_tags=False,
