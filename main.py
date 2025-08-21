@@ -28,6 +28,7 @@ from src.presentation.api.routers import (
     data_router,
     profile_router,
     ws_router,
+    dev_seed_router,
 )
 from src.presentation.api.middleware import (
     LoggingMiddleware, 
@@ -129,6 +130,9 @@ def create_application() -> FastAPI:
     app.include_router(data_router, tags=["Data"])
     app.include_router(profile_router, tags=["Profile"])
     app.include_router(ws_router, tags=["Realtime"])
+    # Dev-only seed endpoints
+    if settings.is_development:
+        app.include_router(dev_seed_router, tags=["Dev Seed"])
     
     return app
 

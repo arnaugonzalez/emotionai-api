@@ -13,6 +13,7 @@ from .usage import router as usage_router
 from .data import router as data_router
 from .profile import router as profile_router
 from .ws import router as ws_router
+from .dev_seed import router as dev_seed_router
 
 __all__ = [
     "chat_router",
@@ -24,4 +25,5 @@ __all__ = [
     "data_router",
     "profile_router",
     "ws_router",
+    "dev_seed_router",
 ]
