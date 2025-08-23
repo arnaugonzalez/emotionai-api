@@ -70,8 +70,17 @@ async def create_custom_emotion(
         description = payload.get("description")
         if not name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name is required")
+        if len(str(name)) > 30:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name must be at most 30 characters")
         if color is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="color is required")
+        # Validate color range according to Flutter Color integer (32-bit ARGB)
+        try:
+            color_int = int(color)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="color must be an integer")
+        if color_int < 0 or color_int > 0xFFFFFFFF:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="color integer out of range")
 
         db = container.database
         async with db.get_session() as session:
@@ -88,7 +97,7 @@ async def create_custom_emotion(
                 id=uuid4(),
                 user_id=user_id,
                 name=str(name),
-                color=int(color),
+                color=color_int,
                 description=str(description) if description else None,
                 is_active=True,
                 usage_count=0,

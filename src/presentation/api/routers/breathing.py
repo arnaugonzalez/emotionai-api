@@ -70,14 +70,26 @@ async def create_breathing_session(
     try:
         db = container.database
         async with db.get_session() as session:
+            # Validate rating and description
+            rating_val = session_body.get("rating")
+            if rating_val is not None:
+                try:
+                    rating_val = float(rating_val)
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="rating must be a number")
+                if rating_val < 1 or rating_val > 5:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="rating must be between 1 and 5")
+            comment_val = session_body.get("comment")
+            if comment_val is not None and len(str(comment_val)) > 200:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment must be at most 200 characters")
             model = BreathingSessionModel(
                 id=uuid4(),
                 user_id=user_id,
                 pattern_name=session_body.get("pattern", "Basic Breathing"),
                 duration_minutes=session_body.get("duration_minutes", 5),
                 completed=session_body.get("completed", True),
-                effectiveness_rating=max(1, min(5, int(float(session_body.get("rating") or 3.0)))) if session_body.get("rating") is not None else None,
-                notes=session_body.get("comment"),
+                effectiveness_rating=int(rating_val) if rating_val is not None else None,
+                notes=comment_val,
                 session_data={"source": "flutter_app", "original_data": session_body},
                 tags=[],
                 tag_confidence=None,
@@ -167,15 +179,39 @@ async def create_breathing_pattern(
     try:
         db = container.database
         async with db.get_session() as session:
+            # Validate inputs according to app rules (name <= 30, numeric fields <= 99)
+            name = str(pattern.get("name", "Custom Pattern"))
+            if len(name) > 30:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="name must be at most 30 characters")
+            def _as_int(key: str, default: int) -> int:
+                try:
+                    return int(pattern.get(key, default))
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{key} must be an integer")
+            inhale = _as_int("inhale_seconds", 4)
+            hold = _as_int("hold_seconds", 0)
+            exhale = _as_int("exhale_seconds", 4)
+            cycles = _as_int("cycles", 4)
+            rest = _as_int("rest_seconds", 0)
+            if inhale < 1 or inhale > 99:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="inhale_seconds must be between 1 and 99")
+            if hold < 0 or hold > 99:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="hold_seconds must be between 0 and 99")
+            if exhale < 1 or exhale > 99:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="exhale_seconds must be between 1 and 99")
+            if cycles < 1 or cycles > 99:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cycles must be between 1 and 99")
+            if rest < 0 or rest > 99:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="rest_seconds must be between 0 and 99")
             model = BreathingPatternModel(
                 id=uuid4(),
                 user_id=user_id,
-                name=pattern.get("name", "Custom Pattern"),
-                inhale_seconds=max(1, min(30, int(pattern.get("inhale_seconds") or 4))),
-                hold_seconds=max(0, min(30, int(pattern.get("hold_seconds") or 0))),
-                exhale_seconds=max(1, min(30, int(pattern.get("exhale_seconds") or 4))),
-                cycles=max(1, min(20, int(pattern.get("cycles") or 4))),
-                rest_seconds=max(0, min(10, int(pattern.get("rest_seconds") or 0))),
+                name=name,
+                inhale_seconds=inhale,
+                hold_seconds=hold,
+                exhale_seconds=exhale,
+                cycles=cycles,
+                rest_seconds=rest,
                 description=pattern.get("description"),
                 is_preset=False,
                 is_active=True,

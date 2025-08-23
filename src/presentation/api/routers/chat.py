@@ -57,6 +57,11 @@ async def chat_with_agent(
     logger.info(f"Chat request received - User: {current_user_id}, Agent: {payload.agent_type}, Message length: {len(payload.message)}")
     
     try:
+        # Validate message length (limit to 700 chars from our side)
+        if payload.message is None or len(payload.message) == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
+        if len(payload.message) > 700:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message must be at most 700 characters")
         # Get the agent chat use case from container
         chat_use_case: AgentChatUseCase = container.agent_chat_use_case
         logger.info("Agent chat use case retrieved successfully")

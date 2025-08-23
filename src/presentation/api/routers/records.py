@@ -194,9 +194,12 @@ async def create_emotional_record(
     try:
         db = container.database
         async with db.get_session() as session:
+            # Enforce description length (home screen input) <= 700
+            description = record.get("description", "")
+            if description is not None and len(str(description)) > 700:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="description must be at most 700 characters")
             # Check for duplicate records before creating
             emotion = record.get("emotion", "neutral")
-            description = record.get("description", "")
             custom_emotion_name = record.get("custom_emotion_name")
             
             # Check for duplicates
