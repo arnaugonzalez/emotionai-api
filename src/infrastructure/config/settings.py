@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support"""
     
     # Application
-    app_name: str = "EmotionAI API - Clean Architecture"
+    app_name: str = "EmotionAI FastAPI"
     debug: bool = False
     version: str = "2.0.0"
     environment: str = "development"
