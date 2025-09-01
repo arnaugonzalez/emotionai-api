@@ -9,7 +9,7 @@ import logging
 import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any
-
+from src import __version__ as app_version
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -84,7 +84,7 @@ def create_application() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         description="Enterprise-grade EmotionAI API with Clean Architecture",
-        version=settings.version,
+        version=app_version,
         debug=settings.debug,
         lifespan=lifespan,
         docs_url="/docs" if settings.is_development else None,

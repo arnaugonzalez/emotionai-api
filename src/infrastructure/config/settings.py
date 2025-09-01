@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any
 import os
 from pydantic import Field
-
+from src import __version__ as app_version
 
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "EmotionAI FastAPI"
     debug: bool = False
-    version: str = "2.0.0"
+    version: str = app_version
     environment: str = "development"
     
     class Config:
