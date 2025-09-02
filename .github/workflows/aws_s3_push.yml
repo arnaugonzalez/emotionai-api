@@ -43,14 +43,18 @@ jobs:
       - name: Build names
         id: names
         run: |
+          set -euo pipefail
           TS=$(date +%Y%m%d-%H%M%S)
-          SUF=$(echo "${{ steps.ver.outputs.suffix }}" | tr -cs '[:alnum:]._- ' '-')
+    
+          SUF_RAW='${{ steps.ver.outputs.suffix }}'
+          SUF=$(printf '%s' "$SUF_RAW" | LC_ALL=C tr -cs '[:alnum:]._-' '-')
+    
           if [ -n "$SUF" ]; then
-            KEY="releases/app-${{ steps.ver.outputs.tag }}-$TS-$SUF.zip"
+            KEY="releases/emotionai-api-${{ steps.ver.outputs.tag }}-$TS-$SUF.zip"
           else
-            KEY="releases/app-${{ steps.ver.outputs.tag }}-$TS.zip"
+            KEY="releases/emotionai-api-${{ steps.ver.outputs.tag }}-$TS.zip"
           fi
-          echo "zip_key=$KEY" >> $GITHUB_OUTPUT
+          echo "zip_key=$KEY" >> "$GITHUB_OUTPUT"
 
       - name: Build deploy ZIP (exclude dev/legacy)
         run: |
