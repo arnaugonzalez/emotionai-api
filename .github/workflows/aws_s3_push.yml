@@ -1,0 +1,97 @@
+name: Deploy EmotionAI Backend
+
+on:
+  # Deploy only when tagging vX.Y.0 (minor releases)
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.0'
+  # Allow manual runs too
+  workflow_dispatch:
+    inputs:
+      artifact_suffix:
+        description: 'Optional suffix for artifact name (e.g., hotfix)'
+        required: false
+        default: ''
+
+permissions:
+  id-token: write   # OIDC to assume AWS role
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gh-actions-emotionai-deploy
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Extract version/tag
+        id: ver
+        run: |
+          RAW="${GITHUB_REF##*/}"
+          echo "tag=$RAW" >> $GITHUB_OUTPUT
+          echo "suffix=${{ github.event.inputs.artifact_suffix }}" >> $GITHUB_OUTPUT
+
+      - name: Build names
+        id: names
+        run: |
+          TS=$(date +%Y%m%d-%H%M%S)
+          SUF=$(echo "${{ steps.ver.outputs.suffix }}" | tr -cs '[:alnum:]._- ' '-')
+          if [ -n "$SUF" ]; then
+            KEY="releases/app-${{ steps.ver.outputs.tag }}-$TS-$SUF.zip"
+          else
+            KEY="releases/app-${{ steps.ver.outputs.tag }}-$TS.zip"
+          fi
+          echo "zip_key=$KEY" >> $GITHUB_OUTPUT
+
+      - name: Build deploy ZIP (exclude dev/legacy)
+        run: |
+          echo "__version__ = \"${GITHUB_REF_NAME#v}\"" > src/_version.py
+          mkdir -p build
+          zip -r "build/app.zip" . \
+            -x ".*" \
+            -x ".git/**" \
+            -x ".github/**" \
+            -x "tests/**" \
+            -x "docs/**" \
+            -x "**/__pycache__/**" \
+            -x ".pytest_cache/**" \
+            -x ".mypy_cache/**" \
+            -x ".ruff_cache/**" \
+            -x "*.pyc" \
+            -x "*.pyo" \
+            -x "*.log" \
+            -x ".env" \
+            -x ".env.*" \
+            -x "build/**" \
+            -x "node_modules/**" \
+            -x "docker/**" \
+            -x "compose*.yml" \
+            -x "Dockerfile*" \
+            -x "alembic/**"
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp "build/app.zip" "s3://${{ secrets.S3_BUCKET }}/${{ steps.names.outputs.zip_key }}"
+          aws s3 cp <(echo "${{ steps.names.outputs.zip_key }}") "s3://${{ secrets.S3_BUCKET }}/releases/latest.txt"
+
+      - name: Trigger remote deploy via SSM
+        run: |
+          aws ssm send-command \
+            --targets "Key=tag:Name,Values=emotionai-api" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${{ steps.names.outputs.zip_key }}" \
+            --parameters commands='[
+              "sudo /usr/local/bin/emotionai_env_sync.sh",
+              "sudo /usr/local/bin/emotionai_deploy.sh"
+            ]' \
+            --output-s3-bucket-name "${{ secrets.S3_BUCKET }}" \
+            --output-s3-key-prefix "ssm-outputs/${{ steps.ver.outputs.tag }}"
