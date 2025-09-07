@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.declarative import declarative_base
 
 from ..config.settings import Settings
@@ -97,18 +96,11 @@ class DatabaseConnection:
         url = self.settings.database_url
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://")
-        elif url.startswith("sqlite:///"):
-            return url.replace("sqlite:///", "sqlite+aiosqlite:///")
         return url
     
     def _get_connect_args(self) -> Dict[str, Any]:
         """Get database-specific connection arguments"""
-        if "sqlite" in self.settings.database_url:
-            return {
-                "check_same_thread": False,
-                "poolclass": StaticPool
-            }
-        elif "postgresql+asyncpg" in self.settings.database_url:
+        if "postgresql+asyncpg" in self.settings.database_url:
             connect_args = {
                 "connect_timeout": 30
             }
@@ -193,17 +185,6 @@ class DatabaseConnection:
                             {"tname": f"public.{table_name}"},
                         )
                         exists = probe.scalar() is True
-                        if not exists:
-                            missing_tables.append(table_name)
-                elif "sqlite" in database_url:
-                    for table_name in core_tables:
-                        probe = await session.execute(
-                            text(
-                                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=:tname"
-                            ),
-                            {"tname": table_name},
-                        )
-                        exists = probe.first() is not None
                         if not exists:
                             missing_tables.append(table_name)
                 else:

@@ -9,7 +9,6 @@ from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any, List
 import os
 from pydantic import Field, field_validator
-from sqlalchemy.engine import make_url
 from src import __version__ as app_version
 
 class Settings(BaseSettings):
@@ -34,6 +33,11 @@ class Settings(BaseSettings):
     database_echo: bool = False
     database_pool_size: int = 20
     database_max_overflow: int = 30
+    
+    # Redis (for caching and event bus)
+    redis_url: str = "redis://localhost:6379"
+    redis_db: int = 0
+    redis_password: Optional[str] = None
     
     # LLM Configuration
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
@@ -173,9 +177,6 @@ class Settings(BaseSettings):
 def create_settings(config_overrides: Optional[Dict[str, Any]] = None) -> Settings:
     """Create and validate settings instance"""
     settings = Settings(config_overrides)
-    
-    # Ensure required directories exist
-    os.makedirs(os.path.dirname(settings.chromadb_path), exist_ok=True)
     
     # Validate settings only in production
     if settings.is_production:
