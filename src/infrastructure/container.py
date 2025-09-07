@@ -38,6 +38,7 @@ from .analytics.repositories.sqlalchemy_analytics_repository import SqlAlchemyAn
 
 from .services.langchain_agent_service import LangChainAgentService
 from .services.openai_llm_service import OpenAILLMService
+from .services.anthropic_llm_service import AnthropicLLMService
 from .services.redis_event_bus import RedisEventBus
 from .tagging.services.openai_tagging_service import OpenAITaggingService
 from .usage.repositories.sqlalchemy_token_usage_repository import SqlAlchemyTokenUsageRepository
@@ -118,11 +119,19 @@ class ApplicationContainer:
         event_bus = RedisEventBus(settings.redis_url)
         
         # 5. Initialize application services
-        # Initialize OpenAI LLM service
-        llm_service = OpenAILLMService(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model
-        )
+        # Initialize LLM service (prefer Anthropic if configured)
+        if settings.anthropic_api_key:
+            llm_service = AnthropicLLMService(
+                api_key=settings.anthropic_api_key,
+                model=settings.anthropic_model,
+            )
+            logger.info("Using Anthropic Claude as the default LLM provider")
+        else:
+            llm_service = OpenAILLMService(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+            )
+            logger.info("Using OpenAI as the default LLM provider")
         
         # Initialize agent service with real LLM and conversation repository
         agent_service = LangChainAgentService(
