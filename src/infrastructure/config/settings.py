@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any, List
 import os
 from pydantic import Field, field_validator
+from sqlalchemy.engine import make_url
 from src import __version__ as app_version
 
 class Settings(BaseSettings):
@@ -27,21 +28,12 @@ class Settings(BaseSettings):
         extra = "ignore"  # Ignore extra fields instead of raising errors
     
     # Database
-    database_url: str = Field(default="postgresql://user:password@localhost/emotionai_db", env="DATABASE_URL")
+    database_url: str = Field(None, env="DATABASE_URL")
+    async_database_url: str = Field(None, env="ASYNC_DATABASE_URL")
+    db_ssl_root_cert = "/etc/ssl/certs/aws-rds.pem"
     database_echo: bool = False
     database_pool_size: int = 20
     database_max_overflow: int = 30
-    
-    # Redis (for caching and event bus)
-    redis_url: str = "redis://localhost:6379"
-    redis_db: int = 0
-    redis_password: Optional[str] = None
-    
-    # Vector Database
-    vector_db_type: str = "chromadb"  # chromadb or qdrant
-    chromadb_path: str = "./data/chromadb"
-    qdrant_url: Optional[str] = None
-    qdrant_api_key: Optional[str] = None
     
     # LLM Configuration
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
@@ -72,7 +64,7 @@ class Settings(BaseSettings):
     # AWS Configuration (if using DynamoDB or S3)
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
-    aws_region: str = "us-east-1"
+    aws_region: str = Field(default="us-west-1", env="AWS_REGION")
     
     # Monitoring & Observability
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
@@ -88,6 +80,7 @@ class Settings(BaseSettings):
     # EC2
     ec2_public_ip: Optional[str] = Field(default=None, env="EC2_PUBLIC_IP")
 
+    
     # Normalize TRUSTED_HOSTS from comma-separated string, if provided
     @field_validator("trusted_hosts", mode="before")
     @classmethod

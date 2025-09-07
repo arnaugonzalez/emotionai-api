@@ -5,7 +5,7 @@ Handles database connections, session management, and health checks
 for the clean architecture infrastructure layer.
 """
 
-import asyncio
+import ssl
 import logging
 from typing import AsyncGenerator, Dict, Any, Optional
 from contextlib import asynccontextmanager
@@ -27,10 +27,29 @@ Base = declarative_base()
 class DatabaseConnection:
     """Database connection manager with async support"""
     
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.engine = None
-        self.async_engine = None
+
+        # (asyncpg) Create async engine with connection pooling
+        self.async_url = self.settings._get_async_database_url() or self.settings.database_url
+        self.async_engine = create_async_engine(
+            self.async_database_url,
+            echo=self.settings.database_echo,
+            pool_size=self.settings.database_pool_size,
+            max_overflow=self.settings.database_max_overflow,
+            pool_pre_ping=True,  # Verify connections before use
+            connect_args=self._get_connect_args()
+        )
+
+        # (psycopg2) Create sync engine for migrations and other sync operations
+        self.engine = create_engine(
+            self.settings.database_url,
+            echo=self.settings.database_echo,
+            pool_size=self.settings.database_pool_size,
+            max_overflow=self.settings.database_max_overflow,
+            pool_pre_ping=True,  # Verify connections before use
+            connect_args=self._get_connect_args()
+        )
         self.session_factory = None
         self.async_session_factory = None
         self._is_connected = False
@@ -39,26 +58,6 @@ class DatabaseConnection:
         """Initialize database connection"""
         try:
             logger.info("Connecting to database...")
-            
-            # Create async engine with connection pooling
-            async_database_url = self._get_async_database_url()
-            self.async_engine = create_async_engine(
-                async_database_url,
-                echo=self.settings.database_echo,
-                pool_size=self.settings.database_pool_size,
-                max_overflow=self.settings.database_max_overflow,
-                pool_pre_ping=True,  # Verify connections before use
-            )
-            
-            # Create sync engine for migrations and other sync operations
-            self.engine = create_engine(
-                self.settings.database_url,
-                echo=self.settings.database_echo,
-                pool_size=self.settings.database_pool_size,
-                max_overflow=self.settings.database_max_overflow,
-                pool_pre_ping=True,  # Verify connections before use
-                connect_args=self._get_connect_args()
-            )
             
             # Create async session factory
             self.async_session_factory = async_sessionmaker(
@@ -109,10 +108,16 @@ class DatabaseConnection:
                 "check_same_thread": False,
                 "poolclass": StaticPool
             }
-        elif "postgresql" in self.settings.database_url:
-            return {
+        elif "postgresql+asyncpg" in self.settings.database_url:
+            connect_args = {
                 "connect_timeout": 30
             }
+            if self.settings.db_ssl_root_cert:
+                ctx = ssl.create_default_context(cafile=self.settings.db_ssl_root_cert)
+                ctx.check_hostname = True
+                ctx.verify_mode = ssl.CERT_REQUIRED
+                connect_args["ssl"] = ctx
+            return connect_args
         return {}
     
     async def disconnect(self) -> None:
