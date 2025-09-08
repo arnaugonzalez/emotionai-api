@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from uuid import UUID
 
 from ....domain.users.interfaces import IUserRepository
@@ -43,7 +43,7 @@ class AgentChatUseCase:
         user_id: UUID,
         agent_type: str,
         message: str,
-        context: Dict[str, Any] | None = None,
+    context: Optional[Dict[str, Any]] = None,
     ) -> Any:
         logger.info(f"AgentChatUseCase.execute called - User: {user_id}, Agent: {agent_type}, Message: {message[:50]}...")
         

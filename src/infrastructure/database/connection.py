@@ -29,16 +29,17 @@ class DatabaseConnection:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-        # (asyncpg) Create async engine with connection pooling
-        self.async_url = self.settings._get_async_database_url() or self.settings.database_url
+        # Use async URL if available, otherwise convert sync URL
+        self.async_url = self.settings.async_database_url or self._get_async_database_url() if self.settings.database_url else None
+        # Create async engine with connection pooling
         self.async_engine = create_async_engine(
-            self.async_database_url,
+            self.async_url,
             echo=self.settings.database_echo,
             pool_size=self.settings.database_pool_size,
             max_overflow=self.settings.database_max_overflow,
             pool_pre_ping=True,  # Verify connections before use
             connect_args=self._get_connect_args()
-        )
+        ) if self.async_url else None
 
         # (psycopg2) Create sync engine for migrations and other sync operations
         self.engine = create_engine(
@@ -48,7 +49,7 @@ class DatabaseConnection:
             max_overflow=self.settings.database_max_overflow,
             pool_pre_ping=True,  # Verify connections before use
             connect_args=self._get_connect_args()
-        )
+        ) if self.settings.database_url else None
         self.session_factory = None
         self.async_session_factory = None
         self._is_connected = False
@@ -57,6 +58,9 @@ class DatabaseConnection:
         """Initialize database connection"""
         try:
             logger.info("Connecting to database...")
+            
+            if not self.async_engine:
+                raise ValueError("Database not configured - missing DATABASE_URL")
             
             # Create async session factory
             self.async_session_factory = async_sessionmaker(
@@ -67,11 +71,12 @@ class DatabaseConnection:
             )
             
             # Create sync session factory (for migrations)
-            self.session_factory = sessionmaker(
-                bind=self.engine,
-                autocommit=False,
-                autoflush=False
-            )
+            if self.engine:
+                self.session_factory = sessionmaker(
+                    bind=self.engine,
+                    autocommit=False,
+                    autoflush=False
+                )
             
             # Test connection with simple query (avoid circular dependency)
             try:
@@ -94,12 +99,27 @@ class DatabaseConnection:
     def _get_async_database_url(self) -> str:
         """Convert sync database URL to async format"""
         url = self.settings.database_url
+        if not url:
+            raise ValueError("DATABASE_URL not configured")
+        
+        # If already async format, return as-is
+        if "postgresql+asyncpg://" in url:
+            return url
+            
+        # Convert from psycopg2 to asyncpg
+        if "postgresql+psycopg2://" in url:
+            return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
+        
+        # Convert from generic postgresql to asyncpg
         if url.startswith("postgresql://"):
             return url.replace("postgresql://", "postgresql+asyncpg://")
+            
         return url
     
     def _get_connect_args(self) -> Dict[str, Any]:
         """Get database-specific connection arguments"""
+        if not self.settings.database_url:
+            return {}
         if "postgresql+asyncpg" in self.settings.database_url:
             connect_args = {
                 "connect_timeout": 30
@@ -174,7 +194,10 @@ class DatabaseConnection:
                     "token_usage",
                 ]
 
-                database_url = self.settings.database_url.lower()
+                database_url = self.settings.database_url
+                if not database_url:
+                    raise ValueError("DATABASE_URL not configured for health check")
+                database_url = database_url.lower()
                 missing_tables = []
 
                 if "postgresql" in database_url:

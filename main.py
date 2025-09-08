@@ -120,19 +120,19 @@ def create_application() -> FastAPI:
     # Add exception handlers
     add_exception_handlers(app)
     
-    # Include routers
+    # Include routers with /v1/api prefix for main API endpoints
     app.include_router(health_router, prefix="/health", tags=["Health"])
-    app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-    app.include_router(chat_router, prefix="/api/v1", tags=["Chat"])
-    app.include_router(records_router, tags=["Records"])
-    app.include_router(breathing_router, tags=["Breathing"])
-    app.include_router(usage_router, tags=["Usage"])
-    app.include_router(data_router, tags=["Data"])
-    app.include_router(profile_router, tags=["Profile"])
-    app.include_router(ws_router, tags=["Realtime"])
+    app.include_router(auth_router, prefix="/v1/api/auth", tags=["Authentication"])
+    app.include_router(chat_router, prefix="/v1/api", tags=["Chat"])
+    app.include_router(records_router, prefix="/v1/api", tags=["Records"])
+    app.include_router(breathing_router, prefix="/v1/api", tags=["Breathing"])
+    app.include_router(usage_router, prefix="/v1/api", tags=["Usage"])
+    app.include_router(data_router, prefix="/v1/api", tags=["Data"])
+    app.include_router(profile_router, prefix="/v1/api", tags=["Profile"])
+    app.include_router(ws_router, prefix="/v1/api", tags=["Realtime"])
     # Dev-only seed endpoints
     if settings.is_development:
-        app.include_router(dev_seed_router, tags=["Dev Seed"])
+        app.include_router(dev_seed_router, prefix="/v1/api", tags=["Dev Seed"])
     
     return app
 

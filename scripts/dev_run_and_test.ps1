@@ -13,16 +13,20 @@ Set-Location $repoRoot
 $venvDir = if ($env:VENV_DIR) { $env:VENV_DIR } else { '.venv' }
 $uvicornHost = if ($env:UVICORN_HOST) { $env:UVICORN_HOST } else { '127.0.0.1' }
 $uvicornPort = if ($env:UVICORN_PORT) { $env:UVICORN_PORT } else { '8000' }
-$baseUrl = "http://$uvicornHost:$uvicornPort"
+$baseUrl = "http://${uvicornHost}:${uvicornPort}"
 
+Write-Host "Setting up virtual environment..."
 if (-not (Test-Path $venvDir)) {
-  python -m venv $venvDir | Out-Null
+  Write-Host "Creating virtual environment..."
+  python -m venv $venvDir
 }
 
-$activate = Join-Path $venvDir 'Scripts' 'Activate.ps1'
-. $activate
+$activate = Join-Path $venvDir "Scripts\Activate.ps1"
+Write-Host "Activating virtual environment..."
+& $activate
 
-python -m pip install --upgrade pip wheel | Out-Null
+Write-Host "Installing/upgrading dependencies..."
+python -m pip install --upgrade pip wheel
 if (Test-Path 'requirements-production.txt') {
   python -m pip install --no-cache-dir -r requirements-production.txt
 } elseif (Test-Path 'requirements.txt') {
@@ -31,37 +35,8 @@ if (Test-Path 'requirements-production.txt') {
   python -m pip install --no-cache-dir 'uvicorn[standard]' fastapi
 }
 
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = 'python'
-$psi.Arguments = "-m uvicorn main:app --host $uvicornHost --port $uvicornPort"
-$psi.UseShellExecute = $false
-$psi.RedirectStandardOutput = $true
-$psi.RedirectStandardError = $true
-$proc = [System.Diagnostics.Process]::Start($psi)
+Write-Host "Starting uvicorn server at $baseUrl..."
+Write-Host "Press Ctrl+C to stop the server"
 
-try {
-  for ($i = 0; $i -lt 60; $i++) {
-    try {
-      $resp = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing -TimeoutSec 2
-      if ($resp.StatusCode -eq 200) {
-        Write-Host "Server is up at $baseUrl"
-        break
-      }
-    } catch { }
-    Start-Sleep -Seconds 1
-    if ($i -eq 59) { throw "Timed out waiting for $baseUrl/health" }
-  }
-
-  try {
-    $resp = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing
-    Write-Host "[health] $($resp.Content)"
-  } catch {
-    Write-Warning $_
-  }
-
-  Write-Host 'Press Ctrl+C to stop, or wait 5 seconds to exit automatically...'
-  Start-Sleep -Seconds 5
-}
-finally {
-  if (-not $proc.HasExited) { $proc.Kill() }
-}
+# Start uvicorn directly in the foreground
+python -m uvicorn main:app --host $uvicornHost --port $uvicornPort --reload

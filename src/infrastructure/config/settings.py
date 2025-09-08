@@ -21,15 +21,15 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", env="ENVIRONMENT")
     
     class Config:
-        env_file = "/etc/emotionai-api.env"
+        env_file = ".env" if os.getenv("ENVIRONMENT", "development") == "development" else "/etc/emotionai-api.env"
         case_sensitive = False
         env_prefix = ""
         extra = "ignore"  # Ignore extra fields instead of raising errors
     
     # Database
-    database_url: str = Field(None, env="DATABASE_URL")
-    async_database_url: str = Field(None, env="ASYNC_DATABASE_URL")
-    db_ssl_root_cert = "/etc/ssl/certs/aws-rds.pem"
+    database_url: Optional[str] = Field(None, env="DATABASE_URL")
+    async_database_url: Optional[str] = Field(None, env="ASYNC_DATABASE_URL")
+    db_ssl_root_cert: str = "/etc/ssl/certs/aws-rds.pem"
     database_echo: bool = False
     database_pool_size: int = 20
     database_max_overflow: int = 30

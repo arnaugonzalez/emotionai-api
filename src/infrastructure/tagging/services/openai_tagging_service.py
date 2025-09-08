@@ -25,7 +25,7 @@ class OpenAITaggingService(ITaggingService):
         'hurt myself', 'self harm', 'want to die', 'better off dead'
     ]
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", token_usage_repo: ITokenUsageRepository | None = None):
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini", token_usage_repo: Optional[ITokenUsageRepository] = None):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.token_usage_repo = token_usage_repo

@@ -50,6 +50,8 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+test-results/
+test-reports/
 
 # Translations
 *.mo
@@ -61,7 +63,7 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
+# Flask/FastAPI stuff:
 instance/
 .webassets-cache
 
@@ -103,6 +105,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .venv
 env/
 venv/
@@ -153,6 +156,84 @@ data/
 logs/
 *.db
 *.sqlite
+temp/
+tmp/
+cache/
+
+# SSL/TLS certificates and keys
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.csr
+
+# API keys and secrets
+secrets/
+*.secret
+api_keys.txt
+
+# Database dumps and backups
+*.sql.bak
+*.dump
+backup/
+backups/
 
 # Docker
 .dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+
+# Alembic
+alembic/versions/*.pyc
+
+# FastAPI/Uvicorn
+.uvicorn/
+
+# Monitoring and profiling
+*.prof
+profiling/
+monitoring/
+
+# Runtime files
+*.pid
+*.sock
+
+# Local development
+dev-local.*
+local-*
+.local/
+
+# AI/ML models and data
+models/
+*.model
+*.pkl
+*.joblib
+*.h5
+*.pb
+checkpoints/
+
+# Cloud deployment
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# AWS
+.aws/
+aws-config
+*.pem.pub
+
+# Kubernetes
+k8s-local/
+*.kubeconfig
+
+# Helm
+charts/*/charts/
+charts/*/requirements.lock
+
+# CI/CD
+.github/workflows/secrets.yml
