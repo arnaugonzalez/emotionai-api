@@ -15,7 +15,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ....infrastructure.config.settings import settings
 from ....infrastructure.container import ApplicationContainer
-from .deps import get_container
+from .deps import get_container, get_current_user_id
 from ....infrastructure.database.models import UserModel
 from sqlalchemy import select
 
@@ -129,12 +129,9 @@ async def logout_user(token: str = Depends(security)):
 
 @router.get("/me", summary="Get current user")
 async def get_current_user(
-    token: HTTPAuthorizationCredentials = Depends(security),
+    user_id: UUID = Depends(get_current_user_id),
     container: ApplicationContainer = Depends(get_container),
 ):
-    user_id = _parse_jwt(token.credentials)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="invalid token")
     db = container.database
     async with db.get_session() as session:
         res = await session.execute(select(UserModel).where(UserModel.id == user_id))
