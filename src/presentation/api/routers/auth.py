@@ -23,19 +23,23 @@ router = APIRouter()
 security = HTTPBearer()
 
 
-def _create_jwt(user_id: UUID, expires_in_minutes: int) -> str:
+def _create_jwt(user_id: UUID, minutes: int, token_type: str = "access") -> str:
+    now = datetime.utcnow()
     payload = {
         "sub": str(user_id),
-        "exp": datetime.utcnow() + timedelta(minutes=expires_in_minutes),
-        "iat": datetime.utcnow(),
-        "iss": "emotionai-api"
+        "typ": token_type,
+        "iat": now,
+        "exp": now + timedelta(minutes=minutes),
+        "iss": "emotionai-api",
     }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def _parse_jwt(token: str) -> Optional[UUID]:
+def _parse_jwt(token: str, expected_type: str = "access") -> UUID | None:
     try:
         data = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        if data.get("typ") != expected_type:
+            return None
         return UUID(data.get("sub"))
     except Exception:
         return None
@@ -65,10 +69,10 @@ async def register_user(payload: dict, container: ApplicationContainer = Depends
             )
             session.add(user)
             await session.flush()
-        token = _create_jwt(user.id, settings.access_token_expire_minutes)
+        access = _create_jwt(user.id, settings.access_token_expire_minutes, "access")
+        refresh = _create_jwt(user.id, getattr(settings, "refresh_token_expire_days", 30) * 24 * 60, "refresh")
         return {
-            "access_token": token,
-            "token_type": "bearer",
+            "access_token": access, "refresh_token": refresh, "token_type": "bearer",
             "expires_in": settings.access_token_expire_minutes * 60,
             "user": {
                 "id": str(user.id),
@@ -76,8 +80,8 @@ async def register_user(payload: dict, container: ApplicationContainer = Depends
                 "first_name": user.first_name,
                 "last_name": user.last_name,
                 "is_verified": user.is_verified,
-            },
-        }
+                },
+            }
 
 
 @router.post("/login", summary="User login")
@@ -91,12 +95,12 @@ async def login_user(payload: dict, container: ApplicationContainer = Depends(ge
         user = res.scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=401, detail="invalid credentials")
-        token = _create_jwt(user.id, settings.access_token_expire_minutes)
+        access = _create_jwt(user.id, settings.access_token_expire_minutes, "access")
+        refresh = _create_jwt(user.id, getattr(settings, "refresh_token_expire_days", 30) * 24 * 60, "refresh")
         return {
-            "access_token": token,
-            "token_type": "bearer",
+            "access_token": access, "refresh_token": refresh, "token_type": "bearer",
             "expires_in": settings.access_token_expire_minutes * 60,
-            "user": {
+             "user": {
                 "id": str(user.id),
                 "email": user.email,
                 "first_name": user.first_name,
@@ -105,6 +109,14 @@ async def login_user(payload: dict, container: ApplicationContainer = Depends(ge
             },
         }
 
+@router.post("/refresh", summary="Refresh access token")
+async def refresh_token(payload: dict):
+    token = payload.get("refresh_token")
+    user_id = _parse_jwt(token or "", expected_type="refresh")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="invalid refresh token")
+    access = _create_jwt(user_id, settings.access_token_expire_minutes, "access")
+    return {"access_token": access, "token_type": "bearer", "expires_in": settings.access_token_expire_minutes * 60}
 
 @router.post("/logout", summary="User logout")
 async def logout_user(token: str = Depends(security)):

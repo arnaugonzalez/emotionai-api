@@ -6,11 +6,12 @@ to inject services and other dependencies into endpoint handlers.
 """
 
 import logging
-from typing import Optional
 from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt
+from ..infrastructure.config.settings import settings
 from ..infrastructure.container import get_container
 from ..application.services.profile_service import IProfileService
 from ..application.services.agent_service import IAgentService
@@ -22,33 +23,15 @@ from ..application.services.similarity_search_service import ISimilaritySearchSe
 logger = logging.getLogger(__name__)
 
 # Security scheme for JWT tokens
-security = HTTPBearer(auto_error=False)
+security = HTTPBearer(auto_error=True)
 
-async def get_current_user_id(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> UUID:
-    """Extract current user ID from JWT token"""
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
-        )
-    
+async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UUID:
+    """Extracts and validates the user ID from JWT token in the Authorization header"""
     try:
-        # TODO: Implement proper JWT token validation
-        # For now, return a mock user ID for development
-        # In production, this should decode and validate the JWT token
-        from uuid import uuid4
-        mock_user_id = UUID('550e8400e29b41d4a716446655440000')
-        logger.warning(f"Using mock test@example.com ID: {mock_user_id} - JWT validation not implemented")
-        return mock_user_id
-        
-    except Exception as e:
-        logger.error(f"Error extracting user ID from token: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token"
-        )
+        data = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
+        return UUID(data["sub"])
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
 
 async def get_profile_service() -> IProfileService:
     """Get profile service instance"""

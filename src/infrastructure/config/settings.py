@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     # Authentication
     secret_key: str = Field(default="your-secret-key-here-change-in-production", env="SECRET_KEY")
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    refresh_token_expire_days: Field(default=30, env="REFRESH_TOKEN_EXPIRE_DAYS")
     
     # Agent Configuration
     max_memory_items: int = 100
