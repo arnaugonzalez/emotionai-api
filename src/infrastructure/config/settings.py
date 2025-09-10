@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     health_check_interval: int = 60
     
     # Security
-    cors_origins: List[str] = ["*"]
+    cors_origins: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ORIGINS")
     trusted_hosts: List[str] = Field(default_factory=lambda: ["*"], env="TRUSTED_HOSTS")
     enable_https_redirect: bool = False
 

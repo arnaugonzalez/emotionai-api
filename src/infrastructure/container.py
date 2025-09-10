@@ -119,20 +119,20 @@ class ApplicationContainer:
         event_bus = RedisEventBus(settings.redis_url)
         
         # 5. Initialize application services
-        # Initialize LLM service (prefer Anthropic if configured)
-        if settings.anthropic_api_key:
-            llm_service = AnthropicLLMService(
-                api_key=settings.anthropic_api_key,
-                model=settings.anthropic_model,
-            )
-            logger.info("Using Anthropic Claude as the default LLM provider")
-        else:
+        # Initialize LLM service (prefer OpenAI if configured)
+        if settings.openai_api_key:
             llm_service = OpenAILLMService(
                 api_key=settings.openai_api_key,
                 model=settings.openai_model,
             )
             logger.info("Using OpenAI as the default LLM provider")
-        
+        else:
+            llm_service = AnthropicLLMService(
+                api_key=settings.anthropic_api_key,
+                model=settings.anthropic_model,
+            )
+            logger.info("Using Anthropic Claude as the default LLM provider")
+
         # Initialize agent service with real LLM and conversation repository
         agent_service = LangChainAgentService(
             llm_service=llm_service,
@@ -149,7 +149,7 @@ class ApplicationContainer:
             token_usage_repo=token_usage_repository
         )
         
-        # Initialize mock services (to be replaced with full implementations)
+        # TODO: Initialize mock services (to be replaced with full implementations)
         user_knowledge_service = MockUserKnowledgeService()
         similarity_search_service = MockSimilaritySearchService()
         
