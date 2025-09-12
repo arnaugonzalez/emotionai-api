@@ -38,7 +38,7 @@ def _create_jwt(user_id: UUID, minutes: int, token_type: str = "access") -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def _parse_jwt(token: str, expected_type: str = "access") -> UUID | None:
+def _parse_jwt(token: str, expected_type: str = "access") -> Optional[UUID]:
     try:
         data = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         if data.get("typ") != expected_type:
