@@ -18,9 +18,12 @@ from ....infrastructure.container import ApplicationContainer
 from .deps import get_container, get_current_user_id
 from ....infrastructure.database.models import UserModel
 from sqlalchemy import select
+from passlib.context import CryptContext
 
 router = APIRouter()
 security = HTTPBearer()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _create_jwt(user_id: UUID, minutes: int, token_type: str = "access") -> str:
@@ -50,8 +53,11 @@ async def register_user(payload: dict, container: ApplicationContainer = Depends
     email = payload.get("email")
     first_name = payload.get("first_name", "")
     last_name = payload.get("last_name", "")
+    password = payload.get("password")
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
+    if not password:
+        raise HTTPException(status_code=400, detail="password is required")
     db = container.database
     async with db.get_session() as session:
         # naive: create if not exists by email
@@ -61,7 +67,7 @@ async def register_user(payload: dict, container: ApplicationContainer = Depends
             user = UserModel(
                 id=uuid4(),
                 email=email,
-                hashed_password="dev",  # stub
+                hashed_password=pwd_context.hash(password),
                 first_name=first_name or "",
                 last_name=last_name or "",
                 is_active=True,
@@ -87,13 +93,16 @@ async def register_user(payload: dict, container: ApplicationContainer = Depends
 @router.post("/login", summary="User login")
 async def login_user(payload: dict, container: ApplicationContainer = Depends(get_container)):
     email = payload.get("email")
+    password = payload.get("password")
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
+    if not password:
+        raise HTTPException(status_code=400, detail="password is required")
     db = container.database
     async with db.get_session() as session:
         res = await session.execute(select(UserModel).where(UserModel.email == email))
         user = res.scalar_one_or_none()
-        if user is None:
+        if user is None or not pwd_context.verify(password, user.hashed_password or ""):
             raise HTTPException(status_code=401, detail="invalid credentials")
         access = _create_jwt(user.id, settings.access_token_expire_minutes, "access")
         refresh = _create_jwt(user.id, getattr(settings, "refresh_token_expire_days", 30) * 24 * 60, "refresh")
