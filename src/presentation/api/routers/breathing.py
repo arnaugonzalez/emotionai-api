@@ -21,7 +21,7 @@ from ..validators.data_validators import (
 from .ws import broadcast_calendar_event
 
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 def _handle_db_error(e: Exception, operation: str, entity: str):

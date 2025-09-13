@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..events.manager import CalendarEventManager
 
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 events = CalendarEventManager()
 
 

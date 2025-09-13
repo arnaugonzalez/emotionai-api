@@ -16,7 +16,7 @@ from ....infrastructure.database.models import UserModel
 from sqlalchemy import select
 from ....infrastructure.config.settings import settings
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 def get_container(request: Request) -> ApplicationContainer:

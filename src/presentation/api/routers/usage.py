@@ -15,7 +15,7 @@ from .deps import get_current_user_id, get_container
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 @router.get("/user/limitations", summary="Get monthly token usage and limits")

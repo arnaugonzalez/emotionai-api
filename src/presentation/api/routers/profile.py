@@ -19,7 +19,7 @@ from ...dependencies import get_current_user_id, get_profile_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/profile", tags=["profile"]) 
+router = APIRouter(prefix="/profile", tags=["profile"], redirect_slashes=False) 
 
 
 def _safe_model_to_dict(obj):
@@ -127,7 +127,7 @@ async def get_profile_status(
 	try:
 		logger.info(f"[Profile:Status] Getting profile status for user_id={user_id}")
 		status_response = await profile_service.get_profile_status(user_id)
-		logger.info(f"[Profile:Status] Status computed for user_id={user_id}: {status_response.completeness}")
+		logger.info(f"[Profile:Status] Status computed for user_id={user_id}: {status_response.profile_completeness}")
 		return status_response
 	except HTTPException:
 		raise

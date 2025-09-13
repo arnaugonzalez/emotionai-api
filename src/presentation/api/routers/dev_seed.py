@@ -22,7 +22,7 @@ from ....infrastructure.database.models import (
 )
 
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 
 
 def _ensure_dev():

@@ -4,7 +4,7 @@ on:
   # Deploy only when tagging vX.Y.0 (minor releases)
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.0'
+      - 'v[0-9]+.[0-9]+.[0-9]'
   # Allow manual runs too
   workflow_dispatch:
     inputs:

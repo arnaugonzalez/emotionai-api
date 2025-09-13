@@ -22,7 +22,7 @@ from ....application.exceptions import ApplicationException
 from ....infrastructure.container import ApplicationContainer
 from .deps import get_container, get_current_user_id
 
-router = APIRouter()
+router = APIRouter(redirect_slashes=False)
 security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
