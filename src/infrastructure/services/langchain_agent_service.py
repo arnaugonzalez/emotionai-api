@@ -202,16 +202,33 @@ class LangChainAgentService(IAgentService):
             records = await self.emotional_repository.get_records_by_date_range(
                 user_id, start_date, end_date
             )
-            
-            return [
-                {
-                    "emotion": record.emotion,
-                    "intensity": record.intensity,
-                    "description": record.description,
-                    "timestamp": record.created_at
-                }
-                for record in records[:10]  # Last 10 records
-            ]
+
+            normalized: List[Dict[str, Any]] = []
+            for record in (records or [])[:10]:
+                if isinstance(record, dict):
+                    emotion = record.get("emotion") or record.get("emotion_name")
+                    intensity = record.get("intensity") or record.get("score")
+                    description = record.get("description") or record.get("notes") or ""
+                    ts = record.get("created_at") or record.get("timestamp") or record.get("recorded_at")
+                else:
+                    emotion = getattr(record, "emotion", None)
+                    intensity = getattr(record, "intensity", None)
+                    description = getattr(record, "description", getattr(record, "notes", ""))
+                    ts = getattr(record, "created_at", getattr(record, "recorded_at", None))
+
+                if hasattr(ts, "isoformat"):
+                    ts = ts.isoformat()
+
+                normalized.append(
+                    {
+                        "emotion": emotion,
+                        "intensity": intensity,
+                        "description": description,
+                        "timestamp": ts,
+                    }
+                )
+
+            return normalized
         except Exception as e:
             logger.error(f"Error getting emotional records: {e}")
             return []

@@ -131,7 +131,7 @@ curl -sS "$BASE/v1/api/user/limitations" -H "$(auth_header "$ACCESS")" | pp_json
 # Chat (may require API keys for LLM)
 # =============================
 echo "== CHAT: agents list =="
-curl -sS "$BASE/v1/api/agents" | pp_json
+curl -sS "$BASE/v1/api/agents" -H "$(auth_header "$ACCESS")" | pp_json
 
 echo "== CHAT: status (therapy) =="
 curl -sS "$BASE/v1/api/agents/therapy/status" -H "$(auth_header "$ACCESS")" | pp_json || true
