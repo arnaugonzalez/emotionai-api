@@ -23,7 +23,11 @@ async def calendar_ws(websocket: WebSocket):
         return
     try:
         data = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        _ = UUID(data["sub"])  # validate UUID format
+        if data.get("typ") != "access":
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        sub = data.get("sub")
+        _ = UUID(sub)  # validate UUID format
     except Exception:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

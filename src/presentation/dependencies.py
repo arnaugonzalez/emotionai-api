@@ -26,12 +26,23 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=True)
 
 async def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> UUID:
-    """Extracts and validates the user ID from JWT token in the Authorization header"""
+    """Extracts and validates the user ID from JWT access token in the Authorization header"""
     try:
         data = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
-        return UUID(data["sub"])
+        token_type = data.get("typ")
+        subject = data.get("sub")
+        issuer = data.get("iss")
+        if token_type != "access":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+        if not subject:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing subject in token")
+        if issuer and issuer != "emotionai-api":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
+        return UUID(subject)
+    except HTTPException:
+        raise
     except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
 
 async def get_profile_service() -> IProfileService:
     """Get profile service instance"""
