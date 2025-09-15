@@ -40,6 +40,7 @@ def _safe_model_to_dict(obj):
 
 
 @router.get("/", response_model=UserProfileResponse)
+@router.get("", response_model=UserProfileResponse)
 async def get_profile(
 	profile_service: IProfileService = Depends(get_profile_service),
 	user_id: UUID = Depends(get_current_user_id)
@@ -67,6 +68,7 @@ async def get_profile(
 
 
 @router.post("/", response_model=UserProfileResponse)
+@router.post("", response_model=UserProfileResponse)
 async def create_profile(
 	profile_data: UserProfileRequest,
 	profile_service: IProfileService = Depends(get_profile_service),
@@ -91,6 +93,7 @@ async def create_profile(
 
 
 @router.put("/", response_model=UserProfileResponse)
+@router.put("", response_model=UserProfileResponse)
 async def update_profile(
 	profile_data: UserProfileRequest,
 	current_user_id: UUID = Depends(get_current_user_id),

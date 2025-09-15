@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, cast, String
 
 from .deps import get_container, get_current_user_id
 from ....infrastructure.container import ApplicationContainer
@@ -32,7 +32,7 @@ def _handle_db_error(e: Exception, operation: str):
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error {operation} emotional records")
 
 
-def _check_duplicate_record(
+async def _check_duplicate_record(
     session,
     user_id: UUID,
     emotion: str,
@@ -65,7 +65,7 @@ def _check_duplicate_record(
                 and_(
                     EmotionalRecordModel.user_id == user_id,
                     EmotionalRecordModel.recorded_at >= cutoff_time,
-                    EmotionalRecordModel.context_data['custom_emotion_name'].astext == custom_emotion_name
+                    cast(EmotionalRecordModel.context_data['custom_emotion_name'], String) == custom_emotion_name
                 )
             )
         else:
@@ -78,8 +78,8 @@ def _check_duplicate_record(
                 )
             )
         
-        recent_records = session.execute(query)
-        records = recent_records.scalars().all()
+        result = await session.execute(query)
+        records = result.scalars().all()
         
         if not records:
             return False

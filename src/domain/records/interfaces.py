@@ -16,4 +16,9 @@ class IEmotionalRecordRepository(ABC):
     async def get_emotional_patterns(self, user_id: UUID) -> Dict[str, Any]:
         pass
 
+    @abstractmethod
+    async def get_records_by_date_range(self, user_id: UUID, start_date, end_date) -> List[Dict[str, Any]]:
+        """Return emotional records for a user between start_date and end_date inclusive."""
+        pass
+
 
