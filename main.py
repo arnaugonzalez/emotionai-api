@@ -10,7 +10,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from src import __version__ as app_version
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -36,6 +36,7 @@ from src.presentation.api.middleware import (
     RateLimitingMiddleware
 )
 from src.application.exceptions import ApplicationException
+from src.presentation.api.routers.deps import get_current_user_id
 
 # Configure logging
 logging.basicConfig(
@@ -124,13 +125,15 @@ def create_application() -> FastAPI:
     # Include routers with /v1/api prefix for main API endpoints
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(auth_router, prefix="/v1/api/auth", tags=["Authentication"])
-    app.include_router(chat_router, prefix="/v1/api", tags=["Chat"])
-    app.include_router(records_router, prefix="/v1/api", tags=["Records"])
-    app.include_router(breathing_router, prefix="/v1/api", tags=["Breathing"])
-    app.include_router(usage_router, prefix="/v1/api", tags=["Usage"])
-    app.include_router(data_router, prefix="/v1/api", tags=["Data"])
-    app.include_router(profile_router, prefix="/v1/api", tags=["Profile"])
-    app.include_router(ws_router, prefix="/v1/api", tags=["Realtime"])
+    # Protected routers
+    app.include_router(chat_router, prefix="/v1/api", tags=["Chat"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(records_router, prefix="/v1/api", tags=["Records"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(breathing_router, prefix="/v1/api", tags=["Breathing"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(usage_router, prefix="/v1/api", tags=["Usage"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(data_router, prefix="/v1/api", tags=["Data"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(profile_router, prefix="/v1/api", tags=["Profile"], dependencies=[Depends(get_current_user_id)])
+    # For websockets, handle token manually inside route and mount at /ws/*
+    app.include_router(ws_router, prefix="", tags=["Realtime"])
     # Dev-only seed endpoints
     if settings.is_development:
         app.include_router(dev_seed_router, prefix="/v1/api", tags=["Dev Seed"])
@@ -182,19 +185,6 @@ def add_exception_handlers(app: FastAPI):
 
 # Create the FastAPI application
 app = create_application()
-
-
-@app.get("/", tags=["Root"])
-async def root():
-    """Root endpoint with API information"""
-    return {
-        "message": "EmotionAI API - Clean Architecture",
-        "version": settings.version,
-        "environment": settings.environment,
-        "documentation": "/docs" if settings.is_development else "Contact support for API documentation"
-    }
-
-
 if __name__ == "__main__":
     """Run the application with uvicorn"""
     

@@ -139,7 +139,7 @@ curl -sS "$BASE/v1/api/agents/therapy/status" -H "$(auth_header "$ACCESS")" | pp
 echo "== CHAT: send message =="
 curl -sS -X POST "$BASE/v1/api/chat" \
   -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"agent_type":"therapy","message":"Hello, I\'m feeling good."}' | pp_json || true
+  -d "{\"agent_type\":\"therapy\",\"message\":\"Hello, I'm feeling good.\"}" | pp_json || true
 
 echo "== CHAT: clear memory (therapy) =="
 curl -sS -X DELETE "$BASE/v1/api/agents/therapy/memory" -H "$(auth_header "$ACCESS")" | pp_json || true

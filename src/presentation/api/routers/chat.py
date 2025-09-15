@@ -258,7 +258,10 @@ async def get_conversation_history(
 
 
 @router.get("/agents", summary="List available agents")
-async def list_available_agents():
+async def list_available_agents(
+    current_user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container)
+):
     """Get list of available agent types and their descriptions"""
     
     return {
