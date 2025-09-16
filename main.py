@@ -125,6 +125,9 @@ def create_application() -> FastAPI:
     # Include routers with /v1/api prefix for main API endpoints
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(auth_router, prefix="/v1/api/auth", tags=["Authentication"])
+    # Mobile logs (JWT required)
+    from src.presentation.api.routers.mobile_logs import router as mobile_logs_router
+    app.include_router(mobile_logs_router, prefix="/v1/api", tags=["Mobile Logs"], dependencies=[Depends(get_current_user_id)])
     # Protected routers
     app.include_router(chat_router, prefix="/v1/api", tags=["Chat"], dependencies=[Depends(get_current_user_id)])
     app.include_router(records_router, prefix="/v1/api", tags=["Records"], dependencies=[Depends(get_current_user_id)])

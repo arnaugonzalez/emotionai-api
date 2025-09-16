@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     metrics_port: int = 8080
     health_check_interval: int = 60
+    # Mobile logs
+    mobile_logs_enabled: bool = Field(default=False, env="MOBILE_LOGS_ENABLED")
+    mobile_logs_region: str = Field(default="eu-west-1", env="MOBILE_LOGS_REGION")
+    mobile_logs_group: str = Field(default="/emotionai/mobile-app", env="MOBILE_LOGS_GROUP")
+    mobile_logs_max_per_minute: int = Field(default=500, env="MOBILE_LOGS_MAX_PER_MIN")
     
     # Security
     cors_origins: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ORIGINS")

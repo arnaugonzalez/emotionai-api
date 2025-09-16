@@ -19,6 +19,17 @@ auth_header() {
   echo "Authorization: Bearer $1"
 }
 
+gen_req_id() {
+  echo "$(date +%s%3N)-$RANDOM"
+}
+
+# =============================
+# Health (root, no auth)
+# =============================
+echo "== HEALTH =="
+curl -sS "$BASE/health" | pp_json || true
+curl -sS "$BASE/health/detailed" | pp_json || true
+
 # =============================
 # Auth: register/login/me/refresh
 # =============================
@@ -138,11 +149,34 @@ curl -sS "$BASE/v1/api/agents/therapy/status" -H "$(auth_header "$ACCESS")" | pp
 
 echo "== CHAT: send message =="
 curl -sS -X POST "$BASE/v1/api/chat" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
+  -H "Content-Type: application/json" \
+  -H "$(auth_header "$ACCESS")" \
+  -H "X-Request-ID: $(gen_req_id)" \
   -d "{\"agent_type\":\"therapy\",\"message\":\"Hello, I'm feeling good.\"}" | pp_json || true
 
 echo "== CHAT: clear memory (therapy) =="
 curl -sS -X DELETE "$BASE/v1/api/agents/therapy/memory" -H "$(auth_header "$ACCESS")" | pp_json || true
+
+# =============================
+# Realtime WS (token in query)
+# =============================
+echo "== REALTIME: calendar/ws =="
+WS_URL="$(echo "$BASE" | sed 's#^http#wss#')/v1/api/calendar/ws?token=$ACCESS"
+echo "Connect with: wscat -c \"$WS_URL\""
+
+# =============================
+# Mobile Logs (optional)
+# =============================
+if [[ "${MOBILE_LOGS:-false}" == "true" ]]; then
+  echo "== MOBILE LOGS: send sample batch =="
+  curl -sS -X POST "$BASE/v1/api/mobile-logs" \
+    -H "Content-Type: application/json" \
+    -H "$(auth_header "$ACCESS")" \
+    -d '[
+      {"ts_iso":"'"$(date -u +%Y-%m-%dT%H:%M:%S)"'","level":"info","event":"request.start","request_id":"demo-1","method":"GET","url":"/v1/api/emotional_records/"},
+      {"ts_iso":"'"$(date -u +%Y-%m-%dT%H:%M:%S)"'","level":"info","event":"request.end","request_id":"demo-1","status":200,"latency_ms":123}
+    ]' | pp_json || true
+fi
 
 # =============================
 # Dev seed (development environment only)
