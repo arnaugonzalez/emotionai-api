@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Optional, Any, Dict
+from typing import List, Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.presentation.api.routers.deps import get_current_user
+from src.presentation.dependencies import get_current_user_id
 from src.infrastructure.config.settings import settings
 from src.infrastructure.observability.cloudwatch_logger import CloudWatchLogger
 
@@ -33,7 +34,7 @@ class MobileLogItem(BaseModel):
 @router.post("/mobile-logs", status_code=status.HTTP_204_NO_CONTENT)
 async def ingest_mobile_logs(
     items: List[MobileLogItem],
-    user: Dict[str, Any] = Depends(get_current_user),
+    user_id: UUID = Depends(get_current_user_id),
 ):
     # Enforce body size and rate limit via upstream (left for middleware/nginx), keep minimal checks here
     if not items:
@@ -41,14 +42,9 @@ async def ingest_mobile_logs(
     # No-op if disabled
     if not settings.mobile_logs_enabled:
         return
-    email = user.get('email')
-    if not email:
-        raise HTTPException(status_code=400, detail="Missing user email")
-    user_hash = email.lower()
-    # user_hash is a hash on client; on server we can use hashed email or obfuscated
-    # For simplicity, derive short hash-like slug
+    # Derive user hash from user_id (no email dependency)
     import hashlib
-    user_hash = hashlib.sha256(email.encode()).hexdigest()[:12]
+    user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:12]
 
     try:
         cw = CloudWatchLogger()
