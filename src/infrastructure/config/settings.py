@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     mobile_logs_group: str = Field(default="/emotionai/mobile-app", env="MOBILE_LOGS_GROUP")
     mobile_logs_max_per_minute: int = Field(default=500, env="MOBILE_LOGS_MAX_PER_MIN")
     
+    # Token pricing (cost per 1K tokens)
+    token_cost_per_1k: float = Field(default=0.002, env="TOKEN_COST_PER_1K")
+    
     # Security
     cors_origins: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ORIGINS")
     trusted_hosts: List[str] = Field(default_factory=lambda: ["*"], env="TRUSTED_HOSTS")

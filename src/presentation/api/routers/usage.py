@@ -11,6 +11,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ....infrastructure.container import ApplicationContainer
+from ....infrastructure.config.settings import settings
+from ....infrastructure.database.models import TokenUsageModel
+from sqlalchemy import extract, func, select
 from .deps import get_current_user_id, get_container
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,21 @@ async def get_user_limitations(
     try:
         now = datetime.now(timezone.utc)
         monthly_tokens = await container.get_monthly_usage_use_case.execute(user_id, now.year, now.month)
+        # Daily usage tokens for today UTC
+        async with container.database.get_session() as session:
+            day_stmt = (
+                select(func.coalesce(func.sum(TokenUsageModel.tokens_total), 0))
+                .where(TokenUsageModel.user_id == user_id)
+                .where(extract('year', TokenUsageModel.created_at) == now.year)
+                .where(extract('month', TokenUsageModel.created_at) == now.month)
+                .where(extract('day', TokenUsageModel.created_at) == now.day)
+            )
+            day_res = await session.execute(day_stmt)
+            daily_tokens = int(day_res.scalar_one() or 0)
+        # Cost calculation
+        cost_per_token = settings.token_cost_per_1k / 1000.0
+        monthly_cost = round(monthly_tokens * cost_per_token, 6)
+        daily_cost = round(daily_tokens * cost_per_token, 6)
         monthly_limit = 250_000
         can_make_request = monthly_tokens < monthly_limit
         remaining = max(0, monthly_limit - monthly_tokens)
@@ -40,7 +58,10 @@ async def get_user_limitations(
             "usage_percentage": usage_pct,
             "can_make_request": can_make_request,
             "limit_message": None if can_make_request else "Monthly token limit reached",
-            "limit_reset_time": datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
+            "limit_reset_time": datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat(),
+            "daily_tokens_used": daily_tokens,
+            "daily_cost": daily_cost,
+            "monthly_cost": monthly_cost,
         }
     except Exception as e:
         logger.error(f"Error in get_user_limitations: {e}")
