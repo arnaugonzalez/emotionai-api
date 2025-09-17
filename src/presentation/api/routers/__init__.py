@@ -14,9 +14,11 @@ from .data import router as data_router
 from .profile import router as profile_router
 from .ws import router as ws_router
 from .dev_seed import router as dev_seed_router
+from .suggestions import router as suggestions_router
 
 __all__ = [
     "chat_router",
+    "suggestions_router",
     "health_router",
     "auth_router",
     "records_router",

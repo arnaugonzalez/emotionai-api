@@ -20,6 +20,7 @@ from src.infrastructure.config.settings import settings
 from src.infrastructure.container import ApplicationContainer, initialize_container, shutdown_container
 from src.presentation.api.routers import (
     chat_router,
+    suggestions_router,
     health_router,
     auth_router,
     records_router,
@@ -133,6 +134,7 @@ def create_application() -> FastAPI:
     app.include_router(records_router, prefix="/v1/api", tags=["Records"], dependencies=[Depends(get_current_user_id)])
     app.include_router(breathing_router, prefix="/v1/api", tags=["Breathing"], dependencies=[Depends(get_current_user_id)])
     app.include_router(usage_router, prefix="/v1/api", tags=["Usage"], dependencies=[Depends(get_current_user_id)])
+    app.include_router(suggestions_router, prefix="/v1/api", tags=["Suggestions"], dependencies=[Depends(get_current_user_id)])
     app.include_router(data_router, prefix="/v1/api", tags=["Data"], dependencies=[Depends(get_current_user_id)])
     app.include_router(profile_router, prefix="/v1/api", tags=["Profile"], dependencies=[Depends(get_current_user_id)])
     # For websockets, handle token manually inside route and mount at /ws/*

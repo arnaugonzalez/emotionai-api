@@ -4,7 +4,7 @@ Usage Router
 Provides endpoints related to usage limits and token consumption analytics.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import logging
 
@@ -25,7 +25,7 @@ async def get_user_limitations(
 ):
     """Return monthly token usage and limit for current user"""
     try:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         monthly_tokens = await container.get_monthly_usage_use_case.execute(user_id, now.year, now.month)
         monthly_limit = 250_000
         can_make_request = monthly_tokens < monthly_limit
@@ -40,7 +40,7 @@ async def get_user_limitations(
             "usage_percentage": usage_pct,
             "can_make_request": can_make_request,
             "limit_message": None if can_make_request else "Monthly token limit reached",
-            "limit_reset_time": datetime(now.year, now.month, 1).isoformat()
+            "limit_reset_time": datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error(f"Error in get_user_limitations: {e}")

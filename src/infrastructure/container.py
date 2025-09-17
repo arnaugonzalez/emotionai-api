@@ -166,7 +166,8 @@ class ApplicationContainer:
             agent_service=agent_service,
             tagging_service=tagging_service,
             user_knowledge_service=user_knowledge_service,
-            similarity_search_service=similarity_search_service
+            similarity_search_service=similarity_search_service,
+            database=database,
         )
         get_monthly_usage_use_case = GetMonthlyUsageUseCase(token_usage_repository)
         

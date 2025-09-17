@@ -11,6 +11,9 @@ from ....application.services.agent_service import IAgentService
 from ....application.services.tagging_service import ITaggingService
 from ....application.services.user_knowledge_service import IUserKnowledgeService
 from ....application.services.similarity_search_service import ISimilaritySearchService
+from ....infrastructure.database.connection import DatabaseConnection
+from ....infrastructure.database.models import DailySuggestionModel
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ class AgentChatUseCase:
         tagging_service: ITaggingService,
         user_knowledge_service: IUserKnowledgeService,
         similarity_search_service: ISimilaritySearchService,
+        database: DatabaseConnection = None,
     ) -> None:
         self.user_repository = user_repository
         self.emotional_repository = emotional_repository
@@ -37,6 +41,7 @@ class AgentChatUseCase:
         self.tagging_service = tagging_service
         self.user_knowledge_service = user_knowledge_service
         self.similarity_search_service = similarity_search_service
+        self.database = database
 
     async def execute(
         self,
@@ -85,6 +90,39 @@ class AgentChatUseCase:
                 # Don't fail the chat on logging problems
                 logger.debug("Token usage logging skipped due to error", exc_info=True)
             logger.info(f"Agent service response received: {type(response)}")
+            # Persist suggestions for the day if provided
+            try:
+                suggestions = None
+                if hasattr(response, 'follow_up_suggestions') and response.follow_up_suggestions:
+                    suggestions = list(response.follow_up_suggestions)
+                elif isinstance(response, dict) and response.get('follow_up_suggestions'):
+                    suggestions = list(response.get('follow_up_suggestions') or [])
+                if suggestions and self.database is not None:
+                    async with self.database.get_session() as session:
+                        # normalize date to midnight UTC
+                        today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                        # upsert by (user_id, date)
+                        from sqlalchemy import select, update, insert
+                        stmt = select(DailySuggestionModel).where(
+                            DailySuggestionModel.user_id == user_id,
+                            DailySuggestionModel.date == today,
+                        )
+                        res = await session.execute(stmt)
+                        row = res.scalar_one_or_none()
+                        if row:
+                            await session.execute(
+                                update(DailySuggestionModel)
+                                .where(DailySuggestionModel.id == row.id)
+                                .values(suggestions=suggestions)
+                            )
+                        else:
+                            await session.execute(
+                                insert(DailySuggestionModel)
+                                .values(user_id=user_id, date=today, suggestions=suggestions)
+                            )
+                        await session.commit()
+            except Exception:
+                logger.debug("Skipping suggestions persistence due to error", exc_info=True)
             
             return response
             
