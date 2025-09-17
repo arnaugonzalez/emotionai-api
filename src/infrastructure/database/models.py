@@ -317,6 +317,7 @@ class BreathingPatternModel(Base):
         Index('idx_breathing_patterns_preset', 'is_preset'),
         Index('idx_breathing_patterns_tags', 'tags', postgresql_using='gin'),
         Index('idx_breathing_patterns_name', 'name'),
+        UniqueConstraint('user_id', 'name', name='uq_breathing_pattern_user_name'),
     )
 
 
