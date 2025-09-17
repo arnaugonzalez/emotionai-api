@@ -60,6 +60,24 @@ class AnthropicLLMService(ILLMService):
                 logger.warning("Claude response not valid JSON; returning fallback", exc_info=True)
                 return self._create_fallback_response(context, user_message)
 
+            # Anthropic usage fields vary; attempt to extract if present
+            usage_meta: Dict[str, Any] = {}
+            try:
+                if hasattr(resp, "usage") and resp.usage is not None:
+                    # Claude recent SDKs expose input_tokens/output_tokens
+                    usage_meta = {
+                        "tokens_total": (
+                            getattr(resp.usage, "input_tokens", 0)
+                            + getattr(resp.usage, "output_tokens", 0)
+                        ),
+                        "tokens_prompt": getattr(resp.usage, "input_tokens", None),
+                        "tokens_completion": getattr(resp.usage, "output_tokens", None),
+                        "llm_model": self.model,
+                        "provider": "anthropic",
+                    }
+            except Exception:
+                pass
+
             return TherapyResponse(
                 message=parsed.get("message", "I'm here to help you."),
                 agent_type=context.agent_type,
@@ -69,7 +87,7 @@ class AnthropicLLMService(ILLMService):
                 emotional_tone=parsed.get("emotional_tone", "empathetic"),
                 follow_up_suggestions=parsed.get("follow_up_suggestions", []),
                 crisis_detected=parsed.get("crisis_detected", False),
-                metadata=parsed.get("metadata", {}),
+                metadata={**parsed.get("metadata", {}), **({"usage": usage_meta} if usage_meta else {}), "llm_model": self.model},
             )
 
         except Exception as e:

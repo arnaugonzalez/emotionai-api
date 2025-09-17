@@ -59,6 +59,31 @@ class AgentChatUseCase:
             # Execute the use case
             logger.info("Calling agent_service.send_message...")
             response = await self.agent_service.send_message(user_id, agent_type, message, context or {})
+            # Best-effort token usage logging if metadata is present
+            try:
+                usage = None
+                model = None
+                if hasattr(response, 'metadata') and isinstance(response.metadata, dict):
+                    model = response.metadata.get('llm_model')
+                    usage = response.metadata.get('usage') or response.metadata.get('token_usage')
+                if isinstance(usage, dict):
+                    token_total = int(usage.get('tokens_total') or 0)
+                    token_prompt = int(usage.get('tokens_prompt') or 0)
+                    token_completion = int(usage.get('tokens_completion') or 0)
+                    if token_total > 0:
+                        await self.tagging_service.token_usage_repo.log_usage(  # type: ignore[attr-defined]
+                            user_id=user_id,
+                            interaction_type='chat',
+                            total_tokens=token_total,
+                            tokens_prompt=token_prompt,
+                            tokens_completion=token_completion,
+                            model=model,
+                            data_id=str(getattr(response, 'conversation_id', '') or ''),
+                            metadata={'agent_type': agent_type}
+                        )
+            except Exception:
+                # Don't fail the chat on logging problems
+                logger.debug("Token usage logging skipped due to error", exc_info=True)
             logger.info(f"Agent service response received: {type(response)}")
             
             return response

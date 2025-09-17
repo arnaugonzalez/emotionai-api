@@ -57,6 +57,20 @@ class OpenAILLMService(ILLMService):
             response_content = response.choices[0].message.content
             parsed_response = json.loads(response_content)
             
+            # Extract token usage if available
+            usage_meta: Dict[str, Any] = {}
+            try:
+                if hasattr(response, "usage") and response.usage is not None:
+                    usage_meta = {
+                        "tokens_total": getattr(response.usage, "total_tokens", None),
+                        "tokens_prompt": getattr(response.usage, "prompt_tokens", None),
+                        "tokens_completion": getattr(response.usage, "completion_tokens", None),
+                        "llm_model": self.model,
+                        "provider": "openai",
+                    }
+            except Exception:
+                pass
+
             # Create therapy response
             therapy_response = TherapyResponse(
                 message=parsed_response.get("message", "I'm here to help you."),
@@ -67,7 +81,7 @@ class OpenAILLMService(ILLMService):
                 emotional_tone=parsed_response.get("emotional_tone", "empathetic"),
                 follow_up_suggestions=parsed_response.get("follow_up_suggestions", []),
                 crisis_detected=parsed_response.get("crisis_detected", False),
-                metadata=parsed_response.get("metadata", {})
+                metadata={**parsed_response.get("metadata", {}), **({"usage": usage_meta} if usage_meta else {}), "llm_model": self.model}
             )
             
             logger.info(f"Generated therapy response: {therapy_response.therapeutic_approach} approach")
