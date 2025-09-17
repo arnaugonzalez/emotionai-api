@@ -8,7 +8,7 @@ import logging
 import json
 from typing import Dict, Any, List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import openai
 from openai import AsyncOpenAI
 
@@ -62,7 +62,7 @@ class OpenAILLMService(ILLMService):
                 message=parsed_response.get("message", "I'm here to help you."),
                 agent_type=context.agent_type,
                 conversation_id=context.conversation_id,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 therapeutic_approach=parsed_response.get("therapeutic_approach", "supportive"),
                 emotional_tone=parsed_response.get("emotional_tone", "empathetic"),
                 follow_up_suggestions=parsed_response.get("follow_up_suggestions", []),
@@ -142,7 +142,7 @@ If crisis is detected, set crisis_detected to true and use urgent tone."""
             message="I'm here to listen and support you. I'm experiencing some technical difficulties right now, but I want you to know that your feelings are valid and important. Please continue sharing, and I'll do my best to help.",
             agent_type=context.agent_type,
             conversation_id=context.agent_type,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             therapeutic_approach="supportive",
             emotional_tone="empathetic",
             follow_up_suggestions=["Try to express your feelings", "Consider what might help you feel better"],

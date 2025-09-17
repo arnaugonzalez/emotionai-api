@@ -8,7 +8,7 @@ Defaults to Claude Sonnet for consistent, high-quality responses.
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from anthropic import AsyncAnthropic
 
@@ -64,7 +64,7 @@ class AnthropicLLMService(ILLMService):
                 message=parsed.get("message", "I'm here to help you."),
                 agent_type=context.agent_type,
                 conversation_id=context.conversation_id,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 therapeutic_approach=parsed.get("therapeutic_approach", "supportive"),
                 emotional_tone=parsed.get("emotional_tone", "empathetic"),
                 follow_up_suggestions=parsed.get("follow_up_suggestions", []),
@@ -166,7 +166,7 @@ If crisis is detected, set crisis_detected to true and use urgent tone."""
             ),
             agent_type=context.agent_type,
             conversation_id=context.agent_type,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             therapeutic_approach="supportive",
             emotional_tone="empathetic",
             follow_up_suggestions=["Try to express your feelings", "Consider what might help you feel better"],

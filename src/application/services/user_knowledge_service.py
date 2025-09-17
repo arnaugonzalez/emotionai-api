@@ -8,7 +8,7 @@ It provides personalized insights and context for agent interactions.
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class UserInsight:
@@ -26,7 +26,7 @@ class UserInsight:
         self.description = description
         self.confidence = confidence
         self.supporting_data = supporting_data
-        self.created_at = created_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now(timezone.utc)
 
 
 class UserKnowledgeProfile:
@@ -48,7 +48,7 @@ class UserKnowledgeProfile:
         self.insights = insights
         self.behavioral_patterns = behavioral_patterns
         self.preferences = preferences
-        self.last_updated = last_updated or datetime.utcnow()
+        self.last_updated = last_updated or datetime.now(timezone.utc)
 
 
 class IUserKnowledgeService(ABC):

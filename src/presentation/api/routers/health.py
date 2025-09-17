@@ -5,7 +5,7 @@ Provides health check endpoints for monitoring and load balancers.
 """
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -48,7 +48,7 @@ async def health_check(request: Request, container: ApplicationContainer = Depen
                 await session.commit()
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.version,
         "environment": settings.environment
     }
@@ -64,7 +64,7 @@ async def detailed_health_check(
     start_time = time.time()
     health_data = {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": settings.version,
         "environment": settings.environment,
         "components": {}
@@ -93,7 +93,7 @@ async def detailed_health_check(
             status_code=503,
             content={
                 "status": "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": "Health check failed",
                 "details": str(e)
             }
@@ -122,7 +122,7 @@ async def readiness_check(
         
         return {
             "ready": True,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
@@ -142,6 +142,6 @@ async def liveness_check():
     # Simple check that the application is running
     return {
         "alive": True,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "uptime_seconds": time.time()
     } 

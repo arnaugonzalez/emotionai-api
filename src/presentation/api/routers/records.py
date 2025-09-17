@@ -202,17 +202,17 @@ async def create_emotional_record(
             emotion = record.get("emotion", "neutral")
             custom_emotion_name = record.get("custom_emotion_name")
             
-            # Check for duplicates
-            is_duplicate = _check_duplicate_record(
+            # Check for duplicates (ignore when description is empty)
+            is_duplicate = await _check_duplicate_record(
                 session=session,
                 user_id=user_id,
                 emotion=emotion,
-                description=description,
+                description=description or "",
                 custom_emotion_name=custom_emotion_name,
                 time_window_minutes=5
             )
             
-            if is_duplicate:
+            if is_duplicate and (description or custom_emotion_name):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={

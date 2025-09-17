@@ -6,7 +6,7 @@ encapsulated within the entity itself.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from uuid import UUID, uuid4
 
@@ -25,8 +25,8 @@ class User:
     is_active: bool = True
     agent_personality: AgentPersonality = field(default_factory=lambda: AgentPersonality.EMPATHETIC_SUPPORTIVE)
     profile: UserProfile = field(default_factory=UserProfile)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Domain events (to be published)
     _domain_events: List[Any] = field(default_factory=list, init=False)
@@ -41,7 +41,7 @@ class User:
         """Update user profile with business validation"""
         old_profile = self.profile
         self.profile = UserProfile.from_dict(profile_data)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         
         # Domain event for profile updates
         self._add_domain_event(
@@ -56,17 +56,17 @@ class User:
         """Change agent personality with business rules"""
         if self.agent_personality != personality:
             self.agent_personality = personality
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
     
     def deactivate(self) -> None:
         """Deactivate user account"""
         self.is_active = False
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
     
     def activate(self) -> None:
         """Activate user account"""
         self.is_active = True
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
     
     def is_profile_complete(self) -> bool:
         """Check if user profile is complete enough for personalized agents"""

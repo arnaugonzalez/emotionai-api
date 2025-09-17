@@ -7,7 +7,7 @@ Handles persistence of conversation data for agent memory and context.
 import logging
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,15 +32,15 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
         """Save a conversation and return its ID"""
         try:
             # Generate title if not provided
-            title = conversation_data.get('title') or f"{agent_type.title()} Session - {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
+            title = conversation_data.get('title') or f"{agent_type.title()} Session - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
             
             conversation = ConversationModel(
                 id=str(uuid.uuid4()),
                 user_id=str(user_id),
                 agent_type=agent_type,
                 title=title,
-                created_at=datetime.utcnow(),
-                last_message_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                last_message_at=datetime.now(timezone.utc),
                 is_active=True
             )
             
@@ -74,7 +74,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
                 content=content,
                 message_type=message_type,
                 message_metadata=metadata or {},
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             
             async with self.database.async_session_factory() as session:
@@ -88,7 +88,7 @@ class SqlAlchemyConversationRepository(IAgentConversationRepository):
                     select(ConversationModel).where(ConversationModel.id == conversation_id)
                 )
                 if conversation:
-                    conversation.last_message_at = datetime.utcnow()
+                    conversation.last_message_at = datetime.now(timezone.utc)
                     conversation.message_count = await self._get_message_count(conversation_id, session)
                 
                 await session.commit()

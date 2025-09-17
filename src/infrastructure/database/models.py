@@ -58,6 +58,9 @@ class UserModel(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+    # Legal
+    terms_accepted = Column(Boolean, default=False, nullable=False)
+    terms_accepted_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     conversations = relationship("ConversationModel", back_populates="user", cascade="all, delete-orphan")

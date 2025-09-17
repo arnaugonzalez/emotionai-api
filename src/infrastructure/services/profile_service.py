@@ -1,7 +1,7 @@
 """Profile service implementation for user profile management"""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
 
@@ -92,9 +92,13 @@ class ProfileService(IProfileService):
                         user_update_data['medications'] = profile_data.medical_info.medications
                 if profile_data.therapy_preferences is not None:
                     user_update_data['therapy_preferences'] = profile_data.therapy_preferences.dict()
+                if profile_data.terms_accepted is not None:
+                    user_update_data['terms_accepted'] = bool(profile_data.terms_accepted)
+                    if bool(profile_data.terms_accepted):
+                        user_update_data['terms_accepted_at'] = datetime.now(timezone.utc)
                 
                 # Add timestamp
-                user_update_data['updated_at'] = datetime.utcnow()
+                user_update_data['updated_at'] = datetime.now(timezone.utc)
                 
                 # Update user
                 if user_update_data:
@@ -139,7 +143,7 @@ class ProfileService(IProfileService):
                 'therapy_chat_history_preference': profile_data.get('therapy_chat_history_preference'),
                 'country': profile_data.get('country'),
                 'gender': profile_data.get('gender'),
-                'updated_at': datetime.utcnow()
+                'updated_at': datetime.now(timezone.utc)
             }
             
             if existing_profile:
@@ -151,7 +155,7 @@ class ProfileService(IProfileService):
             else:
                 # Insert new
                 profile_update_data['user_id'] = user_id
-                profile_update_data['created_at'] = datetime.utcnow()
+                profile_update_data['created_at'] = datetime.now(timezone.utc)
                 
                 stmt = insert(UserProfileDataModel).values(**profile_update_data)
                 await session.execute(stmt)
@@ -241,7 +245,7 @@ class ProfileService(IProfileService):
         """Update therapy context and AI insights"""
         try:
             async with self.database.get_session() as session:
-                update_data = {'updated_at': datetime.utcnow()}
+                update_data = {'updated_at': datetime.now(timezone.utc)}
                 
                 if context_data.therapy_context is not None:
                     update_data['therapy_context'] = context_data.therapy_context
@@ -283,7 +287,7 @@ class ProfileService(IProfileService):
                 stmt = update(UserModel).where(UserModel.id == user_id).values(
                     therapy_context=None,
                     ai_insights=None,
-                    updated_at=datetime.utcnow()
+                    updated_at=datetime.now(timezone.utc)
                 )
                 await session.execute(stmt)
                 await session.commit()
@@ -406,6 +410,7 @@ class ProfileService(IProfileService):
             is_profile_complete=is_complete,
             created_at=user.created_at,
             updated_at=user.updated_at
+            ,terms_accepted=user.terms_accepted
         )
     
     def _build_context_summary(self, user: UserModel, agent_personality: Optional[AgentPersonalityModel] = None) -> Optional[str]:

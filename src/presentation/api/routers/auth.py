@@ -6,7 +6,7 @@ Handles user authentication, registration, and token management.
 
 from datetime import datetime
 from uuid import UUID, uuid4
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from typing import Optional
 
 import jwt
@@ -27,7 +27,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _create_jwt(user_id: UUID, minutes: int, token_type: str = "access") -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "typ": token_type,

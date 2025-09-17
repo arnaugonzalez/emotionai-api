@@ -7,7 +7,7 @@ Handles agent conversations and related functionality.
 import logging
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from pydantic import BaseModel
@@ -109,7 +109,7 @@ async def chat_with_agent(
                     agent_type=response.agent_type,
                     conversation_id=response.conversation_id,
                     suggestions=response.follow_up_suggestions if hasattr(response, 'follow_up_suggestions') else [],
-                    timestamp=response.timestamp.isoformat() if response.timestamp else datetime.utcnow().isoformat()
+                    timestamp=response.timestamp.isoformat() if response.timestamp else datetime.now(timezone.utc).isoformat()
                 )
                 
                 # Log therapeutic approach for debugging

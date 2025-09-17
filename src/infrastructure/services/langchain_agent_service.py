@@ -6,7 +6,7 @@ Now provides real therapeutic responses with conversation memory and context.
 import logging
 from typing import Dict, Any, Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ...application.services.agent_service import IAgentService
 from ...application.services.llm_service import ILLMService
@@ -196,7 +196,7 @@ class LangChainAgentService(IAgentService):
         try:
             # Get records from last 7 days
             from datetime import timedelta
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=7)
             
             records = await self.emotional_repository.get_records_by_date_range(
@@ -244,7 +244,7 @@ class LangChainAgentService(IAgentService):
             message="I'm here to listen and support you. I'm experiencing some technical difficulties right now, but I want you to know that your feelings are valid and important. Please continue sharing, and I'll do my best to help.",
             agent_type=agent_type,
             conversation_id=f"fallback_{user_id}_{agent_type}",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             therapeutic_approach="supportive",
             emotional_tone="empathetic",
             follow_up_suggestions=["Try to express your feelings", "Consider what might help you feel better"],

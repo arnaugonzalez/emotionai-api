@@ -6,7 +6,7 @@ These enable decoupled communication between different parts of the system.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import UUID
 
@@ -39,7 +39,7 @@ class UserCreatedEvent(DomainEvent):
         if not hasattr(self, 'event_type'):
             object.__setattr__(self, 'event_type', 'user_created')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4()))
@@ -56,7 +56,7 @@ class UserProfileUpdatedEvent(DomainEvent):
         if not hasattr(self, 'event_type'):
             object.__setattr__(self, 'event_type', 'user_profile_updated')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4()))
@@ -73,7 +73,7 @@ class AgentConversationStartedEvent(DomainEvent):
         if not hasattr(self, 'event_type'):
             object.__setattr__(self, 'event_type', 'agent_conversation_started')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4()))
@@ -91,7 +91,7 @@ class EmotionalRecordCreatedEvent(DomainEvent):
         if not hasattr(self, 'event_type'):
             object.__setattr__(self, 'event_type', 'emotional_record_created')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4()))
@@ -110,7 +110,7 @@ class UserDataTaggedEvent(DomainEvent):
         if not hasattr(self, 'event_type'):
             object.__setattr__(self, 'event_type', 'user_data_tagged')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4()))

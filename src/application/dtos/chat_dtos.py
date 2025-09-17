@@ -8,7 +8,7 @@ without exposing internal domain structures.
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class ChatResponse:
     
     def __post_init__(self):
         if self.timestamp is None:
-            object.__setattr__(self, 'timestamp', datetime.utcnow())
+            object.__setattr__(self, 'timestamp', datetime.now(timezone.utc))
     
     @classmethod
     def create_crisis_response(cls, crisis_message: str) -> 'ChatResponse':
