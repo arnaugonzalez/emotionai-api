@@ -110,10 +110,16 @@ class AgentChatUseCase:
                         res = await session.execute(stmt)
                         row = res.scalar_one_or_none()
                         if row:
+                            # Append new suggestions to existing, dedupe exact matches, keep order
+                            existing = list(row.suggestions or [])
+                            combined = existing + [s for s in suggestions if s not in existing]
+                            # Soft cap to avoid unbounded growth
+                            if len(combined) > 200:
+                                combined = combined[-200:]
                             await session.execute(
                                 update(DailySuggestionModel)
                                 .where(DailySuggestionModel.id == row.id)
-                                .values(suggestions=suggestions)
+                                .values(suggestions=combined)
                             )
                         else:
                             await session.execute(

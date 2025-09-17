@@ -15,6 +15,7 @@ from ....infrastructure.container import ApplicationContainer
 from ...dependencies import get_current_user_id
 from .deps import get_container
 from ....infrastructure.database.models import DailySuggestionModel
+from ....application.services.similarity_search_service import ISimilaritySearchService
 
 
 router = APIRouter(redirect_slashes=False)
@@ -46,7 +47,32 @@ async def get_daily_suggestions(
             row = res.scalar_one_or_none()
             if not row:
                 return []
-            return list(row.suggestions or [])
+            all_sugs: List[str] = list(row.suggestions or [])
+            # If > 5, select last 15 and filter to 5 distinct using similarity service
+            if len(all_sugs) > 5:
+                recent = all_sugs[-15:]
+                try:
+                    sim: ISimilaritySearchService = container.similarity_search_service  # type: ignore[attr-defined]
+                    selected: List[str] = []
+                    for s in reversed(recent):  # start from newest
+                        # simple similarity via tag similarity on tokenized words
+                        def tokenize(t: str) -> List[str]:
+                            return [w.lower() for w in t.split() if w]
+                        keep = True
+                        for chosen in selected:
+                            score = await sim.calculate_tag_similarity(tokenize(s), tokenize(chosen))
+                            if score >= 0.6:  # mostly similar, skip
+                                keep = False
+                                break
+                        if keep:
+                            selected.append(s)
+                        if len(selected) >= 5:
+                            break
+                    return list(reversed(selected))  # restore chronological order
+                except Exception:
+                    # Fallback: last 5
+                    return all_sugs[-5:]
+            return all_sugs
     except HTTPException:
         raise
     except Exception:
