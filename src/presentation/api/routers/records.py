@@ -12,11 +12,15 @@ import hashlib
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, and_, cast, String
 
+from passlib.context import CryptContext
+
 from .deps import get_container, get_current_user_id
 from ....infrastructure.container import ApplicationContainer
 from ....infrastructure.database.models import EmotionalRecordModel, CustomEmotionModel
 from ..validators.data_validators import validate_emotional_record
 from .ws import broadcast_calendar_event
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 router = APIRouter(redirect_slashes=False)
@@ -233,7 +237,7 @@ async def create_emotional_record(
                 user_obj = UserModel(
                     id=user_id,
                     email=f"dev+{str(user_id)}@example.com",
-                    hashed_password="dev",
+                    hashed_password=pwd_context.hash("placeholder"),
                     first_name="Dev",
                     last_name="User",
                     is_active=True,
@@ -306,7 +310,7 @@ async def create_record_from_custom_emotion(
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="custom_emotion_color is required")
 
             # Check for duplicate records before creating
-            is_duplicate = _check_duplicate_record(
+            is_duplicate = await _check_duplicate_record(
                 session=session,
                 user_id=user_id,
                 emotion=str(name),
@@ -314,7 +318,7 @@ async def create_record_from_custom_emotion(
                 custom_emotion_name=str(name),
                 time_window_minutes=5
             )
-            
+
             if is_duplicate:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
