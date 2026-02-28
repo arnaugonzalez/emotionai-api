@@ -117,18 +117,18 @@ class UserDataTaggedEvent(DomainEvent):
 
 
 @dataclass(frozen=True)
-class UserProfileUpdatedEvent(DomainEvent):
+class UserProfileInsightsUpdatedEvent(DomainEvent):
     """Event fired when user profile is updated with new insights"""
     user_id: UUID
     insights_added: List[str]
     tags_updated: bool
     behavioral_patterns_detected: bool
-    
+
     def __post_init__(self):
         if not hasattr(self, 'event_type'):
-            object.__setattr__(self, 'event_type', 'user_profile_updated')
+            object.__setattr__(self, 'event_type', 'user_profile_insights_updated')
         if not hasattr(self, 'occurred_at'):
-            object.__setattr__(self, 'occurred_at', datetime.utcnow())
+            object.__setattr__(self, 'occurred_at', datetime.now(timezone.utc))
         if not hasattr(self, 'event_id'):
             import uuid
             object.__setattr__(self, 'event_id', str(uuid.uuid4())) 
