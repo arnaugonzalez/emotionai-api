@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     anthropic_model: str = Field(default="claude-3-5-sonnet-latest", env="ANTHROPIC_MODEL")
     
     # Authentication
-    secret_key: str = Field(default="your-secret-key-here-change-in-production", env="SECRET_KEY")
+    secret_key: str = Field(env="SECRET_KEY")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     refresh_token_expire_days: int = Field(default=30, env="REFRESH_TOKEN_EXPIRE_DAYS")
@@ -169,7 +169,7 @@ class Settings(BaseSettings):
         """Validate that required settings are present"""
         required_settings = []
 
-        if not self.secret_key or self.secret_key == "your-secret-key-here-change-in-production":
+        if not self.secret_key:
             required_settings.append("SECRET_KEY")
 
         # Require at least one LLM provider key

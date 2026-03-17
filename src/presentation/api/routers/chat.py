@@ -27,11 +27,6 @@ security = HTTPBearer()
 logger = logging.getLogger(__name__)
 
 
-def get_container(request: Request) -> ApplicationContainer:
-    # Provided by deps; keep for FastAPI signature clarity
-    return request.app.state.container
-
-
 class ChatApiRequest(BaseModel):
     agent_type: Optional[str] = "therapy"
     message: str
@@ -232,24 +227,17 @@ async def get_conversation_history(
     container: ApplicationContainer = Depends(get_container)
 ):
     """Get conversation history for the current user"""
-    
+
     try:
-        # TODO: Implement conversation history retrieval
-        # This would typically involve a conversation repository
-        
-        # Placeholder response
-        return [
-            {
-                "id": "conv_123",
-                "agent_type": agent_type or "therapy",
-                "title": "Sample Conversation",
-                "created_at": "2024-01-01T00:00:00Z",
-                "last_message_at": "2024-01-01T01:00:00Z",
-                "message_count": 10,
-                "is_active": True
-            }
-        ]
-        
+        repo = container.conversation_repository
+        conversations = await repo.get_conversation_history(
+            user_id=current_user_id,
+            agent_type=agent_type or "therapy",
+            limit=limit,
+        )
+        # Apply offset manually (repo doesn't support it directly)
+        return conversations[offset:]
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

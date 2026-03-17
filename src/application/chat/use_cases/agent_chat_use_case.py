@@ -13,6 +13,7 @@ from ....application.services.user_knowledge_service import IUserKnowledgeServic
 from ....application.services.similarity_search_service import ISimilaritySearchService
 from ....infrastructure.database.connection import DatabaseConnection
 from ....infrastructure.database.models import DailySuggestionModel
+from ....domain.usage.interfaces import ITokenUsageRepository
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ class AgentChatUseCase:
         user_knowledge_service: IUserKnowledgeService,
         similarity_search_service: ISimilaritySearchService,
         database: DatabaseConnection = None,
+        token_usage_repo: ITokenUsageRepository = None,
     ) -> None:
         self.user_repository = user_repository
         self.emotional_repository = emotional_repository
@@ -42,6 +44,7 @@ class AgentChatUseCase:
         self.user_knowledge_service = user_knowledge_service
         self.similarity_search_service = similarity_search_service
         self.database = database
+        self.token_usage_repo = token_usage_repo
 
     async def execute(
         self,
@@ -75,8 +78,8 @@ class AgentChatUseCase:
                     token_total = int(usage.get('tokens_total') or 0)
                     token_prompt = int(usage.get('tokens_prompt') or 0)
                     token_completion = int(usage.get('tokens_completion') or 0)
-                    if token_total > 0:
-                        await self.tagging_service.token_usage_repo.log_usage(  # type: ignore[attr-defined]
+                    if token_total > 0 and self.token_usage_repo is not None:
+                        await self.token_usage_repo.log_usage(
                             user_id=user_id,
                             interaction_type='chat',
                             total_tokens=token_total,

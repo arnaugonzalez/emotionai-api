@@ -42,14 +42,14 @@ class DatabaseConnection:
         ) if self.async_url else None
 
         # (psycopg2) Create sync engine for migrations and other sync operations
+        sync_url = self._get_sync_database_url() if self.settings.database_url else None
         self.engine = create_engine(
-            self.settings.database_url,
+            sync_url,
             echo=self.settings.database_echo,
             pool_size=self.settings.database_pool_size,
             max_overflow=self.settings.database_max_overflow,
             pool_pre_ping=True,  # Verify connections before use
-            connect_args=self._get_connect_args()
-        ) if self.settings.database_url else None
+        ) if sync_url else None
         self.session_factory = None
         self.async_session_factory = None
         self._is_connected = False
@@ -115,6 +115,18 @@ class DatabaseConnection:
             return url.replace("postgresql://", "postgresql+asyncpg://")
             
         return url
+
+    def _get_sync_database_url(self) -> str:
+        """Convert database URL to sync (psycopg2) format"""
+        url = self.settings.database_url
+        if not url:
+            raise ValueError("DATABASE_URL not configured")
+
+        # Convert asyncpg to plain postgresql
+        if "postgresql+asyncpg://" in url:
+            return url.replace("postgresql+asyncpg://", "postgresql://")
+
+        return url
     
     def _get_connect_args(self) -> Dict[str, Any]:
         """Get database-specific connection arguments"""
@@ -122,7 +134,7 @@ class DatabaseConnection:
             return {}
         if "postgresql+asyncpg" in self.settings.database_url:
             connect_args = {
-                "connect_timeout": 30
+                "timeout": 30
             }
             if self.settings.db_ssl_root_cert:
                 ctx = ssl.create_default_context(cafile=self.settings.db_ssl_root_cert)

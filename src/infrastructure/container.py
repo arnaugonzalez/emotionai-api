@@ -40,7 +40,7 @@ from .services.langchain_agent_service import LangChainAgentService
 from .services.openai_llm_service import OpenAILLMService
 from .services.anthropic_llm_service import AnthropicLLMService
 from .services.redis_event_bus import RedisEventBus
-from .tagging.services.openai_tagging_service import OpenAITaggingService
+from .services.openai_tagging_service import OpenAITaggingService
 from .usage.repositories.sqlalchemy_token_usage_repository import SqlAlchemyTokenUsageRepository
 from .services.mock_user_knowledge_service import MockUserKnowledgeService
 from .services.mock_similarity_search_service import MockSimilaritySearchService
@@ -133,6 +133,9 @@ class ApplicationContainer:
             )
             logger.info("Using Anthropic Claude as the default LLM provider")
 
+        # Register LLM service with the factory for health checks
+        llm_factory.register_service(llm_service)
+
         # Initialize agent service with real LLM and conversation repository
         agent_service = LangChainAgentService(
             llm_service=llm_service,
@@ -168,6 +171,7 @@ class ApplicationContainer:
             user_knowledge_service=user_knowledge_service,
             similarity_search_service=similarity_search_service,
             database=database,
+            token_usage_repo=token_usage_repository,
         )
         get_monthly_usage_use_case = GetMonthlyUsageUseCase(token_usage_repository)
         

@@ -28,7 +28,7 @@ class OpenAITaggingService(ITaggingService):
     ]
     
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", token_usage_repo: Optional[ITokenUsageRepository] = None):
-        self.client = openai.OpenAI(api_key=api_key)
+        self.client = openai.AsyncOpenAI(api_key=api_key)
         self.model = model
         self.token_usage_repo = token_usage_repo
         
@@ -136,7 +136,7 @@ Respond ONLY with a JSON object containing:
             if has_urgency_keywords:
                 user_message += "\n\nIMPORTANT: This message contains mental health urgency indicators. Please include tags like 'mental_health_urgency', 'immediate_support_needed', or 'therapeutic_intervention' with high confidence."
             
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.message_system_prompt},
@@ -208,7 +208,7 @@ Notes: {notes or 'No additional notes'}
             if user_context:
                 analysis_content += f"\nUser context: {json.dumps(user_context, indent=2)}"
             
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.emotional_system_prompt},
@@ -277,7 +277,7 @@ Notes: {notes or 'No additional notes'}
             if user_context:
                 analysis_content += f"\nUser context: {json.dumps(user_context, indent=2)}"
             
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.breathing_system_prompt},
@@ -344,7 +344,7 @@ Categorize the given tags into these groups:
 Respond ONLY with a JSON object mapping categories to tag lists.
 """
             
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -382,7 +382,7 @@ Respond ONLY with a JSON array of objects:
 ]
 """
             
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -405,7 +405,7 @@ Respond ONLY with a JSON array of objects:
         """Check if OpenAI tagging service is healthy"""
         try:
             # Simple test call
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "user", "content": "Health check"}

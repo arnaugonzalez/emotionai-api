@@ -20,7 +20,7 @@ from ....infrastructure.database.models import UserModel
 from sqlalchemy import select
 from passlib.context import CryptContext
 
-router = APIRouter(redirect_slashes=False)
+router = APIRouter(prefix="/auth", redirect_slashes=False)
 security = HTTPBearer()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
