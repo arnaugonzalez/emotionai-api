@@ -42,7 +42,7 @@ class UserProfile:
     
     def is_complete(self) -> bool:
         """Check if profile has minimum required information for personalization"""
-        basic_info_complete = self.name and self.age and self.gender
+        basic_info_complete = bool(self.name and self.age and self.gender)
         goals_complete = (
             len(self.goals) > 0 or 
             len(self.therapy_goals) > 0 or 

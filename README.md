@@ -68,7 +68,21 @@ main.py                       # App setup (redirect_slashes disabled, global aut
 
 ## Testing
 ```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 pytest -q
+```
+
+Coverage report (terminal + missing lines):
+```bash
+pip install pytest-cov
+pytest -q --cov=src --cov-report=term-missing
+```
+
+Coverage HTML report:
+```bash
+pytest -q --cov=src --cov-report=html
 ```
 
 ## Deploy
