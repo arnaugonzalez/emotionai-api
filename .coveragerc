@@ -1,0 +1,14 @@
+[run]
+source = src
+omit =
+    src/infrastructure/*
+    src/presentation/*
+    src/**/__init__.py
+    src/domain/*/interfaces.py
+
+[report]
+show_missing = True
+skip_empty = True
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
