@@ -35,7 +35,15 @@ class User:
         """Initialize user after creation"""
         if not self.id:
             self.id = uuid4()
-            self._add_domain_event(UserCreatedEvent(user_id=self.id, email=self.email))
+            self._add_domain_event(
+                UserCreatedEvent(
+                    event_id=str(uuid4()),
+                    occurred_at=datetime.now(timezone.utc),
+                    event_type="user_created",
+                    user_id=self.id,
+                    email=self.email,
+                )
+            )
     
     def update_profile(self, profile_data: Dict[str, Any]) -> None:
         """Update user profile with business validation"""
@@ -46,6 +54,9 @@ class User:
         # Domain event for profile updates
         self._add_domain_event(
             UserProfileUpdatedEvent(
+                event_id=str(uuid4()),
+                occurred_at=datetime.now(timezone.utc),
+                event_type="user_profile_updated",
                 user_id=self.id,
                 old_profile=old_profile,
                 new_profile=self.profile
