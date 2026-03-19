@@ -160,9 +160,6 @@ demo_run_step() {
   local step_status_file="${artifact_dir}/status.txt"
   local step_log_file="${artifact_dir}/step.log"
 
-  DEMO_CURRENT_STEP_ID="$step_id"
-  DEMO_CURRENT_STEP_ARTIFACT_DIR="$artifact_dir"
-
   mkdir -p "$artifact_dir"
   rm -f "$step_reason_file" "$step_remediation_file" "$step_artifact_file" "$step_status_file" "$step_log_file"
 

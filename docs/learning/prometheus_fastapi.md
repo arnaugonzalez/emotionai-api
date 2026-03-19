@@ -342,6 +342,47 @@ Then configure the Python client for multiprocess collection.
 
 This is not required for the current development stack, but it becomes mandatory if EmotionAI keeps `workers=4` in production and wants accurate aggregated metrics.
 
+## Hardened demo runner usage
+
+The observability slice now includes a modular bash runner at [`scripts/demo_flow.sh`](/home/eager-eagle/code/emotionai/emotionai-api/scripts/demo_flow.sh) that is meant for demos, learning, and quick smoke checks.
+
+Useful commands:
+
+```bash
+bash scripts/demo_flow.sh --list-steps
+bash scripts/demo_flow.sh --section metrics --base-url http://127.0.0.1:8000
+bash scripts/demo_flow.sh --section all --base-url http://127.0.0.1:8000
+```
+
+What the sections mean:
+
+- `metrics`: required checks for `/metrics` availability, Prometheus text format, and EmotionAI metric families
+- `celery`: optional future checks for Flower/Celery prerequisites and reachability
+- `otel`: optional future checks for Jaeger and OTLP readiness
+- `all`: runs every registered step and exits non-zero only if a required step fails
+
+Failure troubleshooting flow:
+
+1. Read the step result line for the exact failed condition.
+2. Use the `remediation=` hint printed under that step.
+3. Open the run artifact directory printed as `artifacts=...`.
+4. Inspect the per-step files such as `.body`, `.stderr`, `.headers`, and `step.log`.
+
+Artifact layout example:
+
+```text
+.tmp/demo_flow/20260319T133625Z/
+  metrics.endpoint/
+    http.body
+    http.stderr
+    http.headers
+    reason.txt
+    remediation.txt
+    step.log
+```
+
+This matters because demo failures are no longer "something is wrong". They now tell you whether the problem is transport (`curl` could not connect), HTTP contract (`status != 200`), or exposition content (missing metric families or headers).
+
 ## Further reading
 
 - Official metric types: https://prometheus.io/docs/concepts/metric_types/
