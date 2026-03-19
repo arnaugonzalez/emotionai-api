@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     metrics_port: int = 8080
     health_check_interval: int = 60
+    # OpenTelemetry tracing
+    otel_enabled: bool = Field(default=True, env="OTEL_ENABLED")
+    otel_endpoint: str = Field(default="http://jaeger:4318", env="OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_service_name: str = Field(default="emotionai-api", env="OTEL_SERVICE_NAME")
     # Mobile logs
     mobile_logs_enabled: bool = Field(default=False, env="MOBILE_LOGS_ENABLED")
     mobile_logs_region: str = Field(default="eu-west-1", env="MOBILE_LOGS_REGION")
