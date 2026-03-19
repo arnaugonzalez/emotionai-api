@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 from uuid import UUID, uuid4
 import hashlib
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, and_, cast, String
@@ -17,10 +18,12 @@ from passlib.context import CryptContext
 from .deps import get_container, get_current_user_id
 from ....infrastructure.container import ApplicationContainer
 from ....infrastructure.database.models import EmotionalRecordModel, CustomEmotionModel
+from ....infrastructure.tasks.notification_tasks import notify_new_record
 from ..validators.data_validators import validate_emotional_record
 from .ws import broadcast_calendar_event
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(redirect_slashes=False)
@@ -34,6 +37,16 @@ def _handle_db_error(e: Exception, operation: str):
     if "not null constraint" in str(e).lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing required fields in emotional record data")
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error {operation} emotional records")
+
+
+def _enqueue_record_notification(record_id: str, user_id: str) -> None:
+    try:
+        notify_new_record.delay(record_id, user_id)
+    except Exception:
+        logger.exception(
+            "Failed to enqueue notify_new_record task",
+            extra={"record_id": record_id, "user_id": user_id},
+        )
 
 
 async def _check_duplicate_record(
@@ -265,6 +278,7 @@ async def create_emotional_record(
             )
             session.add(model)
             await session.commit()
+            _enqueue_record_notification(str(model.id), str(user_id))
             # Notify listeners
             await broadcast_calendar_event(
                 "emotional_record.created",
@@ -399,5 +413,4 @@ async def create_record_from_custom_emotion(
         raise
     except Exception as e:
         _handle_db_error(e, "creating")
-
 
