@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: m1s1 — Test Infrastructure Setup
+current_phase: m1s3 — Use Case Tests
 status: executing
-last_updated: "2026-03-19T09:35:53.156Z"
+last_updated: "2026-03-19T09:41:09.144Z"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -17,16 +17,16 @@ progress:
 ## Current Position
 
 **Milestone:** 1 — Professional Python testing foundation
-**Current Phase:** m1s1 — Test Infrastructure Setup
-**Status:** m1s1-01 complete — executing m1s1
+**Current Phase:** m1s3 — Use Case Tests
+**Status:** m1s3-01 complete — executing m1s3
 
 ## Phase Progress
 
 | Phase | Name | Status |
 |-------|------|--------|
-| m1s1 | Test Infrastructure Setup | ◑ In Progress (1/1 plan done) |
-| m1s2 | Domain Entity Tests | ○ Pending |
-| m1s3 | Use Case Tests | ○ Pending |
+| m1s1 | Test Infrastructure Setup | ● Complete (1/1 plan done) |
+| m1s2 | Domain Entity Tests | ● Complete (1/1 plan done) |
+| m1s3 | Use Case Tests | ● Complete (1/1 plan done) |
 | m1s4 | Router Integration Tests | ○ Pending |
 
 ## Accumulated Context
@@ -62,6 +62,8 @@ progress:
 - [Phase m1s1]: dependency-injector removed from requirements.txt — confirmed unused
 - [Phase m1s2-domain-entity-tests]: xfail(strict=True) used for 2 domain bugs: update_profile() crashes and is_profile_complete() returns None — bugs documented, not hidden
 - [Phase m1s2-domain-entity-tests]: coverage exclude_lines added for @abstractmethod and frozen dataclass dead branches — 2 genuinely unreachable lines remain
+- [Phase m1s3]: DB suggestion persistence path in AgentChatUseCase left uncovered at unit level — belongs in integration test, not mock-based test
+- [Phase m1s3]: make_use_case(**kwargs) helper pattern established for multi-dependency use case construction
 
 ## Last Updated
-2026-03-19T09:17:06Z — Completed m1s1-01-PLAN.md (test infrastructure setup)
+2026-03-19T09:41:00Z — Completed m1s3-01-PLAN.md (use case tests)
