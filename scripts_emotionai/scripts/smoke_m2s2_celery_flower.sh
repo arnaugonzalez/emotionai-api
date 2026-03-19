@@ -230,10 +230,19 @@ PY
 }
 
 run_e2e() {
+  log "Prebuilding api and celery_worker images for current dependencies"
+  (
+    cd "${ROOT_DIR}"
+    docker compose build api celery_worker
+  ) >"${RUN_DIR}/compose-build.log" 2>&1 || {
+    sed -n '1,220p' "${RUN_DIR}/compose-build.log" >&2 || true
+    fail "docker compose build failed"
+  }
+
   log "Booting db, redis, api, celery_worker, and flower"
   (
     cd "${ROOT_DIR}"
-    docker compose up -d db redis api celery_worker flower
+    docker compose up -d --force-recreate db redis api celery_worker flower
   ) >"${RUN_DIR}/compose-up.log" 2>&1 || {
     sed -n '1,220p' "${RUN_DIR}/compose-up.log" >&2 || true
     fail "docker compose up failed"

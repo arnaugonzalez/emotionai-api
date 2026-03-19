@@ -30,4 +30,7 @@ celery_app.conf.update(
     result_expires=86400,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
+    worker_send_task_events=True,
+    task_send_sent_event=True,
+    task_track_started=True,
 )

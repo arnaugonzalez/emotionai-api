@@ -22,7 +22,7 @@ from ....infrastructure.tasks.notification_tasks import notify_new_record
 from ..validators.data_validators import validate_emotional_record
 from .ws import broadcast_calendar_event
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 logger = logging.getLogger(__name__)
 
 
@@ -413,4 +413,3 @@ async def create_record_from_custom_emotion(
         raise
     except Exception as e:
         _handle_db_error(e, "creating")
-

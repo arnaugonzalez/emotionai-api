@@ -90,7 +90,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A src.infrastructure.tasks.worker worker --loglevel=info --concurrency=2
+    command: celery -A src.infrastructure.tasks.worker worker --loglevel=info -E --concurrency=2
     env_file:
       - .env
     environment:
@@ -109,6 +109,8 @@ services:
   flower:
     image: mher/flower:2.0
     command: celery --broker=redis://redis:6379/0 flower --port=5555
+    environment:
+      - FLOWER_UNAUTHENTICATED_API=true
     ports:
       - "5555:5555"
     depends_on:

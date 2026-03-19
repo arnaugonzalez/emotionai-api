@@ -23,7 +23,7 @@ from passlib.context import CryptContext
 router = APIRouter(prefix="/auth", redirect_slashes=False)
 security = HTTPBearer()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def _create_jwt(user_id: UUID, minutes: int, token_type: str = "access") -> str:
