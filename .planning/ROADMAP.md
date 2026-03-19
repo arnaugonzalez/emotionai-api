@@ -111,6 +111,8 @@ real Python backend."
 **Slices:**
 
 ### 2.1 — Prometheus instrumentation
+Status: Completed on 2026-03-19 via `m2s1-01`
+
 Research: read `src/presentation/api/main.py` (middleware stack), `requirements-production.txt`.
 Tasks:
 - Add `prometheus-fastapi-instrumentator` to requirements

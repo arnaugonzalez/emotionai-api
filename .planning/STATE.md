@@ -2,23 +2,23 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: m1s4 — Router Integration Tests
-status: complete
-last_updated: "2026-03-19T09:53:32Z"
+current_phase: m2s1 — Prometheus Instrumentation
+status: completed
+last_updated: "2026-03-19T11:57:00Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
+  total_phases: 7
+  completed_phases: 5
+  total_plans: 10
+  completed_plans: 5
 ---
 
 # Project State
 
 ## Current Position
 
-**Milestone:** 1 — Professional Python testing foundation
-**Current Phase:** m1s4 — Router Integration Tests
-**Status:** m1s4-01 complete — milestone 1 complete
+**Milestone:** 2 — Observability and async task infrastructure
+**Current Phase:** m2s1 — Prometheus Instrumentation
+**Status:** m2s1-01 complete — Prometheus metrics, dashboard provisioning, and learning doc shipped
 
 ## Phase Progress
 
@@ -28,6 +28,9 @@ progress:
 | m1s2 | Domain Entity Tests | ● Complete (1/1 plan done) |
 | m1s3 | Use Case Tests | ● Complete (1/1 plan done) |
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
+| m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
+| m2s2 | Celery + Redis Task Queue | ○ Pending (0/3 plans done) |
+| m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
 ## Accumulated Context
 
@@ -38,6 +41,9 @@ progress:
 - `tests/` directory has conftest.py, __init__.py in all subdirs; ready for test slices
 - pyproject.toml created with asyncio_mode=auto, coverage source=src, branch=true
 - requirements.txt: aiosqlite>=0.19.0 added, dependency-injector removed
+- Prometheus `/metrics` is exposed from FastAPI lifespan via `app.state.instrumentator`
+- Custom metrics live in `src/infrastructure/metrics/custom_metrics.py`
+- Local observability stack now includes Prometheus scrape config and Grafana provisioning
 - aiosqlite 0.22.1 installed in .venv
 - Duplicate agent_chat_use_case.py TECH_DEBT: root copy at src/application/use_cases/ does NOT exist (already cleaned up); canonical at src/application/chat/use_cases/agent_chat_use_case.py
 - deps.py (src/presentation/api/routers/deps.py) is clean — no hardcoded UUID bypass; uses JWT via src/presentation/dependencies.py
@@ -50,6 +56,9 @@ progress:
 - `src/application/usage/use_cases/get_monthly_usage_use_case.py`
 - `src/application/chat/use_cases/agent_chat_use_case.py`
 - `src/presentation/api/routers/` — health.py, auth.py, records.py
+- `src/infrastructure/metrics/custom_metrics.py`
+- `prometheus/prometheus.yml`
+- `grafana/provisioning/dashboards/emotionai.json`
 
 ### Decisions Made
 - No fail_under threshold in coverage config until slice 1.2 (domain tests) ships
@@ -67,6 +76,14 @@ progress:
 - [Phase m1s4]: Health endpoint is at /health/ (trailing slash) due to redirect_slashes=False on both router and app
 - [Phase m1s4]: passlib+bcrypt incompatibility patched in test fixtures via pwd_context.hash/verify override — production issue deferred
 - [Phase m1s4]: Auth router returns 400 (not 422) for missing fields — tests assert 400 to match actual router behaviour
+- [Phase m2s1-prometheus-instrumentation]: Stored the Prometheus Instrumentator on app.state and exposed /metrics during lifespan startup.
+- [Phase m2s1-prometheus-instrumentation]: Pre-initialized bounded labelsets so labeled metric families appear in /metrics before the first chat request.
+- [Phase m2s1-prometheus-instrumentation]: Used track_inprogress() to represent active users as concurrent in-flight chat handlers.
+
+## Issues / Blockers
+
+- Full regression suite still exits non-zero because three pre-existing `XPASS(strict)` domain tests now pass unexpectedly in `tests/domain/test_user.py`. These were carried forward from Milestone 1 and are not regressions from m2s1.
+- Docker smoke verification for Prometheus/Grafana could not run in this environment because the Docker daemon is unavailable at `/var/run/docker.sock`.
 
 ## Last Updated
-2026-03-19T09:53:32Z — Completed m1s4-01-PLAN.md (router integration tests)
+2026-03-19T11:57:00Z — Completed m2s1-01-PLAN.md (Prometheus instrumentation)
