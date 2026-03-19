@@ -12,6 +12,7 @@ declare -Ag DEMO_STEP_DESCRIPTION=()
 declare -Ag DEMO_STEP_FUNCTION=()
 declare -Ag DEMO_RESULT_STATUS=()
 declare -Ag DEMO_RESULT_REASON=()
+declare -Ag DEMO_RESULT_REMEDIATION=()
 declare -Ag DEMO_RESULT_ARTIFACT=()
 
 demo_init_defaults() {
@@ -36,10 +37,10 @@ die() {
 
 demo_validate_section() {
   case "$1" in
-    all|core|metrics)
+    all|core|metrics|celery|otel)
       ;;
     *)
-      die "Unsupported section '$1'. Expected one of: all, core, metrics"
+      die "Unsupported section '$1'. Expected one of: all, core, metrics, celery, otel"
       ;;
   esac
 }
@@ -97,6 +98,7 @@ demo_should_run_step() {
 demo_print_run_header() {
   cat <<EOF
 == Demo Flow ==
+run_id=${DEMO_RUN_ID}
 base_url=${DEMO_BASE_URL}
 section=${DEMO_SECTION}
 artifacts=${DEMO_ARTIFACT_ROOT}
@@ -118,6 +120,8 @@ demo_print_step_listing() {
 
 demo_run_registered_steps() {
   local step_id status
+  local required_failures=0
+  local optional_failures=0
 
   for step_id in "${DEMO_STEP_IDS[@]}"; do
     if demo_should_run_step "$step_id"; then
@@ -125,17 +129,24 @@ demo_run_registered_steps() {
     else
       DEMO_RESULT_STATUS["$step_id"]="SKIP"
       DEMO_RESULT_REASON["$step_id"]="Not selected by --section ${DEMO_SECTION}"
+      DEMO_RESULT_REMEDIATION["$step_id"]="Re-run with --section ${DEMO_STEP_SECTION[$step_id]} or --section all."
       DEMO_RESULT_ARTIFACT["$step_id"]="-"
     fi
   done
 
   status=0
   for step_id in "${DEMO_STEP_IDS[@]}"; do
-    if [[ "${DEMO_RESULT_STATUS[$step_id]:-}" == "FAIL" && "${DEMO_STEP_REQUIRED[$step_id]}" == "true" ]]; then
-      status=1
-      break
+    if [[ "${DEMO_RESULT_STATUS[$step_id]:-}" == "FAIL" ]]; then
+      if [[ "${DEMO_STEP_REQUIRED[$step_id]}" == "true" ]]; then
+        status=1
+        ((required_failures+=1))
+      else
+        ((optional_failures+=1))
+      fi
     fi
   done
+  DEMO_REQUIRED_FAILURES="$required_failures"
+  DEMO_OPTIONAL_FAILURES="$optional_failures"
   DEMO_OVERALL_STATUS="$status"
 }
 
@@ -144,17 +155,30 @@ demo_run_step() {
   local artifact_dir="${DEMO_ARTIFACT_ROOT}/${step_id//[^A-Za-z0-9._-]/_}"
   local function_name="${DEMO_STEP_FUNCTION[$step_id]}"
   local step_reason_file="${artifact_dir}/reason.txt"
+  local step_remediation_file="${artifact_dir}/remediation.txt"
   local step_artifact_file="${artifact_dir}/artifact.txt"
+  local step_status_file="${artifact_dir}/status.txt"
   local step_log_file="${artifact_dir}/step.log"
 
+  DEMO_CURRENT_STEP_ID="$step_id"
+  DEMO_CURRENT_STEP_ARTIFACT_DIR="$artifact_dir"
+
   mkdir -p "$artifact_dir"
-  rm -f "$step_reason_file" "$step_artifact_file" "$step_log_file"
+  rm -f "$step_reason_file" "$step_remediation_file" "$step_artifact_file" "$step_status_file" "$step_log_file"
 
   echo "-- step=${step_id} section=${DEMO_STEP_SECTION[$step_id]} required=${DEMO_STEP_REQUIRED[$step_id]} description=${DEMO_STEP_DESCRIPTION[$step_id]}"
 
   if "$function_name" "$step_id" "$artifact_dir" >"$step_log_file" 2>&1; then
-    DEMO_RESULT_STATUS["$step_id"]="PASS"
-    DEMO_RESULT_REASON["$step_id"]="OK"
+    if [[ -s "$step_status_file" ]]; then
+      DEMO_RESULT_STATUS["$step_id"]="$(<"$step_status_file")"
+    else
+      DEMO_RESULT_STATUS["$step_id"]="PASS"
+    fi
+    if [[ -s "$step_reason_file" ]]; then
+      DEMO_RESULT_REASON["$step_id"]="$(<"$step_reason_file")"
+    else
+      DEMO_RESULT_REASON["$step_id"]="OK"
+    fi
   else
     DEMO_RESULT_STATUS["$step_id"]="FAIL"
     if [[ -s "$step_reason_file" ]]; then
@@ -164,6 +188,12 @@ demo_run_step() {
     fi
   fi
 
+  if [[ -s "$step_remediation_file" ]]; then
+    DEMO_RESULT_REMEDIATION["$step_id"]="$(<"$step_remediation_file")"
+  else
+    DEMO_RESULT_REMEDIATION["$step_id"]="-"
+  fi
+
   if [[ -f "$step_artifact_file" ]]; then
     DEMO_RESULT_ARTIFACT["$step_id"]="$(<"$step_artifact_file")"
   else
@@ -171,23 +201,61 @@ demo_run_step() {
   fi
 
   cat "$step_log_file"
+  demo_print_step_result "$step_id"
+}
+
+demo_write_step_result() {
+  local artifact_dir="$1"
+  local status="$2"
+  local reason="$3"
+  local remediation="$4"
+  local artifact_path="${5:-$artifact_dir}"
+
+  printf '%s\n' "$status" >"${artifact_dir}/status.txt"
+  printf '%s\n' "$reason" >"${artifact_dir}/reason.txt"
+  printf '%s\n' "$remediation" >"${artifact_dir}/remediation.txt"
+  printf '%s\n' "$artifact_path" >"${artifact_dir}/artifact.txt"
 }
 
 demo_fail_step() {
   local artifact_dir="$1"
   local reason="$2"
-  local artifact_path="${3:-$artifact_dir}"
+  local remediation="$3"
+  local artifact_path="${4:-$artifact_dir}"
 
-  printf '%s\n' "$reason" >"${artifact_dir}/reason.txt"
-  printf '%s\n' "$artifact_path" >"${artifact_dir}/artifact.txt"
+  demo_write_step_result "$artifact_dir" "FAIL" "$reason" "$remediation" "$artifact_path"
   return 1
 }
 
 demo_pass_step() {
   local artifact_dir="$1"
   local artifact_path="${2:-$artifact_dir}"
+  local reason="${3:-OK}"
 
-  printf '%s\n' "$artifact_path" >"${artifact_dir}/artifact.txt"
+  demo_write_step_result "$artifact_dir" "PASS" "$reason" "-" "$artifact_path"
+}
+
+demo_skip_step() {
+  local artifact_dir="$1"
+  local reason="$2"
+  local remediation="$3"
+  local artifact_path="${4:-$artifact_dir}"
+
+  demo_write_step_result "$artifact_dir" "SKIP" "$reason" "$remediation" "$artifact_path"
+}
+
+demo_print_step_result() {
+  local step_id="$1"
+
+  printf 'result status=%s step=%s section=%s required=%s description=%s\n' \
+    "${DEMO_RESULT_STATUS[$step_id]}" \
+    "$step_id" \
+    "${DEMO_STEP_SECTION[$step_id]}" \
+    "${DEMO_STEP_REQUIRED[$step_id]}" \
+    "${DEMO_STEP_DESCRIPTION[$step_id]}"
+  printf 'reason=%s\n' "${DEMO_RESULT_REASON[$step_id]}"
+  printf 'remediation=%s\n' "${DEMO_RESULT_REMEDIATION[$step_id]}"
+  printf 'artifact=%s\n' "${DEMO_RESULT_ARTIFACT[$step_id]}"
 }
 
 demo_http_get() {
@@ -203,12 +271,14 @@ demo_http_get() {
   local url="${DEMO_BASE_URL}${path}"
   local curl_exit=0
 
-  if ! curl --silent --show-error \
+  if curl --silent --show-error \
     --max-time "$DEMO_REQUEST_TIMEOUT" \
     --dump-header "$DEMO_HTTP_HEADERS_FILE" \
     --output "$DEMO_HTTP_BODY_FILE" \
     --write-out "%{http_code}" \
     "$url" >"$DEMO_HTTP_STATUS_FILE" 2>"$DEMO_HTTP_STDERR_FILE"; then
+    curl_exit=0
+  else
     curl_exit=$?
   fi
 
@@ -246,17 +316,25 @@ demo_assert_http_200() {
   demo_http_get "$path" "$artifact_dir" "http"
   if [[ "$DEMO_HTTP_CURL_EXIT" -ne 0 ]]; then
     demo_print_http_failure "Request to ${path} did not complete" "$remediation"
-    demo_fail_step "$artifact_dir" "curl failed for ${path}; see ${DEMO_HTTP_STDERR_FILE}" "$DEMO_HTTP_BODY_FILE"
+    demo_fail_step \
+      "$artifact_dir" \
+      "curl failed for ${path} with exit ${DEMO_HTTP_CURL_EXIT}; see ${DEMO_HTTP_STDERR_FILE}" \
+      "$remediation" \
+      "$DEMO_HTTP_BODY_FILE"
     return 1
   fi
 
   if [[ "$DEMO_HTTP_STATUS" != "200" ]]; then
     demo_print_http_failure "Expected HTTP 200 from ${path}" "$remediation"
-    demo_fail_step "$artifact_dir" "Expected HTTP 200 from ${path}, got ${DEMO_HTTP_STATUS}" "$DEMO_HTTP_BODY_FILE"
+    demo_fail_step \
+      "$artifact_dir" \
+      "Expected HTTP 200 from ${path}, got ${DEMO_HTTP_STATUS}" \
+      "$remediation" \
+      "$DEMO_HTTP_BODY_FILE"
     return 1
   fi
 
-  demo_pass_step "$artifact_dir" "$DEMO_HTTP_BODY_FILE"
+  demo_pass_step "$artifact_dir" "$DEMO_HTTP_BODY_FILE" "HTTP 200 from ${path}"
 }
 
 demo_assert_body_contains() {
@@ -272,7 +350,11 @@ demo_assert_body_contains() {
     sed -n "1,${DEMO_BODY_MAX_LINES}p" "$DEMO_HTTP_BODY_FILE"
     echo "remediation=${remediation}"
     echo "artifact=${DEMO_HTTP_BODY_FILE}"
-    demo_fail_step "$artifact_dir" "Missing ${description}: ${needle}" "$DEMO_HTTP_BODY_FILE"
+    demo_fail_step \
+      "$artifact_dir" \
+      "Missing ${description}: ${needle}" \
+      "$remediation" \
+      "$DEMO_HTTP_BODY_FILE"
     return 1
   fi
 }
@@ -288,9 +370,24 @@ demo_assert_content_type_contains() {
     echo "actual=${DEMO_HTTP_CONTENT_TYPE:-unknown}"
     echo "remediation=${remediation}"
     echo "artifact=${DEMO_HTTP_HEADERS_FILE}"
-    demo_fail_step "$artifact_dir" "Unexpected content type: ${DEMO_HTTP_CONTENT_TYPE:-unknown}" "$DEMO_HTTP_HEADERS_FILE"
+    demo_fail_step \
+      "$artifact_dir" \
+      "Unexpected content type: ${DEMO_HTTP_CONTENT_TYPE:-unknown}" \
+      "$remediation" \
+      "$DEMO_HTTP_HEADERS_FILE"
     return 1
   fi
+}
+
+demo_file_contains() {
+  local file_path="$1"
+  local needle="$2"
+  grep -Fq "$needle" "$file_path"
+}
+
+demo_compose_has_service() {
+  local service_name="$1"
+  demo_file_contains "$(pwd)/docker-compose.yml" "  ${service_name}:"
 }
 
 demo_print_summary() {
@@ -305,16 +402,19 @@ demo_print_summary() {
       SKIP) ((skip_count+=1)) ;;
     esac
 
-    printf '%s section=%s required=%s status=%s artifact=%s reason=%s\n' \
+    printf '%s section=%s required=%s status=%s artifact=%s reason=%s remediation=%s\n' \
       "$step_id" \
       "${DEMO_STEP_SECTION[$step_id]}" \
       "${DEMO_STEP_REQUIRED[$step_id]}" \
       "${DEMO_RESULT_STATUS[$step_id]}" \
       "${DEMO_RESULT_ARTIFACT[$step_id]}" \
-      "${DEMO_RESULT_REASON[$step_id]}"
+      "${DEMO_RESULT_REASON[$step_id]}" \
+      "${DEMO_RESULT_REMEDIATION[$step_id]}"
   done
 
   echo "counts pass=${pass_count} fail=${fail_count} skip=${skip_count}"
+  echo "required_failures=${DEMO_REQUIRED_FAILURES:-0} optional_failures=${DEMO_OPTIONAL_FAILURES:-0}"
+  echo "artifacts=${DEMO_ARTIFACT_ROOT}"
 }
 
 demo_exit_for_results() {
