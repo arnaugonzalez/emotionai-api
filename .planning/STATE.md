@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: m2s1 — Prometheus Instrumentation
-status: completed
-last_updated: "2026-03-19T11:57:00Z"
+current_phase: m2s1.1 — Demo Flow Hardening (INSERTED)
+status: pending
+last_updated: "2026-03-19T13:03:35.189Z"
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 5
   total_plans: 10
   completed_plans: 5
@@ -17,8 +17,8 @@ progress:
 ## Current Position
 
 **Milestone:** 2 — Observability and async task infrastructure
-**Current Phase:** m2s1 — Prometheus Instrumentation
-**Status:** m2s1-01 complete — Prometheus metrics, dashboard provisioning, and learning doc shipped
+**Current Phase:** m2s1.1 — Demo Flow Hardening (INSERTED)
+**Status:** m2s1 complete; urgent inserted phase pending planning
 
 ## Phase Progress
 
@@ -29,10 +29,14 @@ progress:
 | m1s3 | Use Case Tests | ● Complete (1/1 plan done) |
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
+| m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ○ Pending (0/0 plans done) |
 | m2s2 | Celery + Redis Task Queue | ○ Pending (0/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+- Phase m2s1.1 inserted after Phase m2s1: Improve `scripts/demo_flow.sh` each feature/tool to harden E2E learning path (metrics now, telemetry next) (URGENT)
 
 ### Codebase Facts
 - Python 3.11, FastAPI, asyncpg, SQLAlchemy 2.0

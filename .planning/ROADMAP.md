@@ -121,6 +121,16 @@ Tasks:
 - Add Prometheus + Grafana services to `docker-compose.yml` with a basic dashboard JSON
 - Write `docs/learning/prometheus_fastapi.md`
 
+### 2.1.1 — Demo flow hardening for E2E learning path (INSERTED)
+Status: Pending (inserted 2026-03-19)
+
+Research: review `scripts/demo_flow.sh`, API route contracts for `/metrics`, and upcoming observability endpoints (Celery/Flower + OTEL/Jaeger) to keep one durable E2E learning path.
+Tasks:
+- Refactor `scripts/demo_flow.sh` into step-based checks reusable per feature slice
+- Add metrics verification path (`/metrics` availability + key collector assertions)
+- Define extension points so future slices append checks (Celery/Flower now, telemetry/Jaeger later) without script rewrites
+- Ensure script outputs actionable pass/fail diagnostics for learning and demos
+
 ### 2.2 — Celery + Redis task queue
 Research: read `src/infrastructure/container.py` (Redis wiring), `docker-compose.yml` (Redis service).
 Tasks:
