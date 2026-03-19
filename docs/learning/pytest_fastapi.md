@@ -177,6 +177,142 @@ that roll back, or use function-scoped db fixtures in those tests.
 
 ---
 
+## Integration testing FastAPI with TestClient
+
+### What is TestClient
+
+FastAPI ships with a `TestClient` backed by `httpx`. It lets you make
+synchronous HTTP requests to your FastAPI app in tests — no running server
+needed. The app is called directly in-process, so you get real routing, real
+middleware, and real exception handlers — just without real infrastructure.
+
+```python
+from fastapi.testclient import TestClient
+from main import create_application
+
+app = create_application()
+with TestClient(app) as client:
+    response = client.get("/health/")
+    assert response.status_code == 200
+```
+
+### The lifespan problem
+
+EmotionAI's `create_application()` attaches a `lifespan` context manager that
+calls `initialize_container()` on startup. That function connects to PostgreSQL,
+Redis, and (optionally) OpenAI. When TestClient enters its context manager
+(`with TestClient(app) as c`), it fires the lifespan — meaning tests would
+hang or fail trying to reach real infrastructure.
+
+Fix: patch `initialize_container` and `shutdown_container` before the TestClient
+starts. Return a `MockApplicationContainer` from the patched `initialize_container`
+so that `app.state.container` is populated (the lifespan stores it there).
+
+### The container injection problem
+
+Routers get their dependencies via `get_container` from `deps.py`:
+
+```python
+def get_container(request: Request) -> ApplicationContainer:
+    return request.app.state.container
+```
+
+Two options to inject a mock:
+
+**Option A — dependency_overrides (preferred):** Override `get_container`
+directly on the FastAPI app object. Clean, explicit, and works independently
+of how the container ends up in app.state.
+
+```python
+app.dependency_overrides[get_container] = lambda: mock_container
+```
+
+**Option B — app.state injection:** Set `app.state.container = mock_container`
+before the TestClient starts. Simpler, but silently breaks if a router ever
+bypasses `get_container` and reads `request.app.state.container` directly.
+
+In EmotionAI we use both: the lifespan patch supplies `mock_container` to
+`app.state`, and `dependency_overrides` explicitly wires it to `get_container`.
+
+### Pattern used in this project
+
+```python
+@pytest.fixture()
+def client():
+    mock_container = MockApplicationContainer()
+
+    with (
+        patch("main.initialize_container", new=AsyncMock(return_value=mock_container)),
+        patch("main.shutdown_container", new=AsyncMock()),
+    ):
+        from main import create_application
+        from src.presentation.api.routers.deps import get_container
+
+        app = create_application()
+        app.dependency_overrides[get_container] = lambda: mock_container
+
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c, mock_container
+
+        app.dependency_overrides.clear()
+```
+
+`raise_server_exceptions=True` is the default and ensures that unhandled
+server-side exceptions propagate into the test (useful for debugging).
+
+### Mocking a DB session inside a router
+
+Auth.py calls `container.database.get_session()` as an async context manager:
+
+```python
+async with db.get_session() as session:
+    ...
+```
+
+In tests, set `container.database.get_session` to a function that returns an
+async context manager yielding a mock session:
+
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def _get_session():
+    mock_session = AsyncMock()
+    mock_session.execute.return_value = some_result_mock
+    yield mock_session
+
+container.database.get_session = _get_session
+```
+
+### Patching third-party code called inside routers
+
+If a router calls a library function directly (e.g. `pwd_context.hash()`),
+mock it via `patch()` targeting the router module's namespace — not the library:
+
+```python
+patch("src.presentation.api.routers.auth.pwd_context.hash", side_effect=lambda s: "fake_hash")
+```
+
+This is important in EmotionAI where `passlib` + `bcrypt` have a version
+incompatibility (`module 'bcrypt' has no attribute '__about__'`). The auth
+tests patch both `hash` and `verify` so tests never call real bcrypt.
+
+### What to test at the integration level
+
+- HTTP status codes for success and error paths (200, 400, 401, 422, 500)
+- Response body shape — key fields present (`access_token`, `user`, `status`)
+- Request validation — FastAPI returns 422 automatically for Pydantic model
+  violations; 400 when routers validate manually
+- Auth middleware behaviour — no Authorization header on protected routes → 403
+
+### What NOT to test at integration level
+
+- Business logic (that belongs in use case tests — see clean_architecture_testing.md)
+- DB query correctness (that belongs in infrastructure / repository tests)
+- Exact values returned by real services — use unit tests for that
+
+---
+
 ## Further reading
 
 - [pytest-asyncio docs](https://pytest-asyncio.readthedocs.io/)
