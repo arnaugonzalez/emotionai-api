@@ -67,7 +67,7 @@ Each task was committed atomically:
 2. **Task 2: Docker-compose observability stack (Prometheus + Grafana)** - `0654ecf` (feat)
 3. **Task 3: Learning doc — docs/learning/prometheus_fastapi.md** - `d19764e` (feat)
 
-**Plan metadata:** pending
+**Plan metadata:** `5e3996e` (docs)
 
 ## Files Created/Modified
 
