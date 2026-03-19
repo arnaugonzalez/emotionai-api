@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: m2s2 — Celery + Redis Task Queue
 status: completed
-last_updated: "2026-03-19T14:42:17.015Z"
+last_updated: "2026-03-19T14:48:50.530Z"
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 
 **Milestone:** 2 — Observability and async task infrastructure
 **Current Phase:** m2s2 — Celery + Redis Task Queue
-**Status:** m2s2-01 complete; ready to execute m2s2-02
+**Status:** m2s2-02 complete; ready to execute m2s2-03
 
 ## Phase Progress
 
@@ -30,7 +30,7 @@ progress:
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
-| m2s2 | Celery + Redis Task Queue | ◐ In Progress (1/3 plans done) |
+| m2s2 | Celery + Redis Task Queue | ◐ In Progress (2/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
 ## Accumulated Context
@@ -102,6 +102,9 @@ progress:
 - [Phase m2s2-celery-redis-task-queue]: worker.py reads REDIS_URL directly from os.environ and imports no container/app modules so Celery workers stay decoupled from FastAPI startup.
 - [Phase m2s2-celery-redis-task-queue]: notification_tasks.py uses @shared_task instead of binding directly to celery_app so task modules remain lazily registrable.
 - [Phase m2s2-celery-redis-task-queue]: Task verification uses .venv/bin/python because the environment has no python shim on PATH.
+- [Phase m2s2-celery-redis-task-queue]: Reused src.infrastructure.tasks.worker.celery_app instead of creating a second Celery instance in the container.
+- [Phase m2s2-celery-redis-task-queue]: Notification dispatch happens immediately after await session.commit() so workers only see committed records.
+- [Phase m2s2-celery-redis-task-queue]: Broker enqueue failures are logged and swallowed so record creation remains successful during Redis/Celery outages.
 
 ## Issues / Blockers
 
@@ -109,4 +112,4 @@ progress:
 - Docker smoke verification for Prometheus/Grafana could not run in this environment because the Docker daemon is unavailable at `/var/run/docker.sock`.
 
 ## Last Updated
-2026-03-19T14:41:13Z — Completed m2s2-01-PLAN.md; next target is m2s2-02-PLAN.md
+2026-03-19T14:48:00Z — Completed m2s2-02-PLAN.md; next target is m2s2-03-PLAN.md
