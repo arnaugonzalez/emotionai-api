@@ -75,6 +75,9 @@ register_step() {
   # register_step <id> <section> <required:true|false> <description> <function_name>
   [[ -n "$id" && -n "$section" && -n "$required" && -n "$description" && -n "$function_name" ]] \
     || die "register_step requires: id section required description function"
+  [[ "$id" =~ ^[a-z0-9._-]+$ ]] || die "Step id must match ^[a-z0-9._-]+$: $id"
+  [[ "$section" =~ ^[a-z0-9._-]+$ ]] || die "Step section must match ^[a-z0-9._-]+$: $section"
+  [[ "$required" == "true" || "$required" == "false" ]] || die "Step required flag must be true or false: $id"
   [[ -z "${DEMO_STEP_FUNCTION[$id]:-}" ]] || die "Duplicate step id: $id"
   declare -F "$function_name" >/dev/null 2>&1 || die "Step function not found for $id: $function_name"
 
