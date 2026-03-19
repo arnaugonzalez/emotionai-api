@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: m2s1.1 — Demo Flow Hardening (INSERTED)
+current_phase: m2s2 — Celery + Redis Task Queue
 status: in_progress
-last_updated: "2026-03-19T13:30:20Z"
+last_updated: "2026-03-19T13:40:44Z"
 progress:
   total_phases: 8
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 6
+  completed_phases: 6
+  total_plans: 12
+  completed_plans: 7
 ---
 
 # Project State
@@ -17,8 +17,8 @@ progress:
 ## Current Position
 
 **Milestone:** 2 — Observability and async task infrastructure
-**Current Phase:** m2s1.1 — Demo Flow Hardening (INSERTED)
-**Status:** m2s1.1 plan 01 complete; plan 02 pending
+**Current Phase:** m2s2 — Celery + Redis Task Queue
+**Status:** m2s1.1 complete (2/2 plans done); next up is m2s2 plan 01
 
 ## Phase Progress
 
@@ -29,7 +29,7 @@ progress:
 | m1s3 | Use Case Tests | ● Complete (1/1 plan done) |
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
-| m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ◐ In Progress (1/2 plans done) |
+| m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ○ Pending (0/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
@@ -50,6 +50,8 @@ progress:
 - Local observability stack now includes Prometheus scrape config and Grafana provisioning
 - `scripts/demo_flow.sh` is now a section-aware demo runner that loads additive step modules from `scripts/demo_steps/*.sh`
 - `scripts/demo_flow_lib.sh` centralizes step registration, execution summaries, and reusable HTTP assertion helpers
+- Demo runs now store artifacts under `.tmp/demo_flow/<timestamp>/` with per-step reason, remediation, stderr, and body files
+- Optional `celery` and `otel` demo sections now skip cleanly when future observability services are absent
 - aiosqlite 0.22.1 installed in .venv
 - Duplicate agent_chat_use_case.py TECH_DEBT: root copy at src/application/use_cases/ does NOT exist (already cleaned up); canonical at src/application/chat/use_cases/agent_chat_use_case.py
 - deps.py (src/presentation/api/routers/deps.py) is clean — no hardcoded UUID bypass; uses JWT via src/presentation/dependencies.py
@@ -69,6 +71,8 @@ progress:
 - `scripts/demo_flow_lib.sh`
 - `scripts/demo_steps/00_core.sh`
 - `scripts/demo_steps/10_metrics.sh`
+- `scripts/demo_steps/20_celery.sh`
+- `scripts/demo_steps/30_otel.sh`
 
 ### Decisions Made
 - No fail_under threshold in coverage config until slice 1.2 (domain tests) ships
@@ -92,6 +96,9 @@ progress:
 - [Phase m2s1.1-demo-flow-hardening]: `scripts/demo_flow.sh` remains the canonical entry point while orchestration moves into `scripts/demo_flow_lib.sh` and step modules.
 - [Phase m2s1.1-demo-flow-hardening]: Metrics verification is strict: `/metrics` must return 200, expose Prometheus text headers, and include the three required EmotionAI metric families.
 - [Phase m2s1.1-demo-flow-hardening]: Future observability checks must register through `register_step` so selection and ordering stay in the shared runner.
+- [Phase m2s1.1-demo-flow-hardening]: Stored each demo run under .tmp/demo_flow/<timestamp> so failure diagnostics always point to stable body, stderr, header, and log artifacts.
+- [Phase m2s1.1-demo-flow-hardening]: Marked celery and otel checks as optional steps that SKIP when docker-compose services are missing or not running instead of polluting required flow status.
+- [Phase m2s1.1-demo-flow-hardening]: Counted only required step failures toward process exit status while still surfacing optional failures and skips in the final summary.
 
 ## Issues / Blockers
 
@@ -99,4 +106,4 @@ progress:
 - Docker smoke verification for Prometheus/Grafana could not run in this environment because the Docker daemon is unavailable at `/var/run/docker.sock`.
 
 ## Last Updated
-2026-03-19T13:30:20Z — Completed m2s1.1-01-PLAN.md (Demo flow hardening runner + metrics path)
+2026-03-19T13:40:44Z — Completed m2s1.1-02-PLAN.md and phase m2s1.1; next target is m2s2-01-PLAN.md
