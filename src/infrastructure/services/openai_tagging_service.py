@@ -13,6 +13,7 @@ from uuid import UUID
 import openai
 from ...application.tagging.services.tagging_service import ITaggingService, TagExtractionResult
 from ...domain.usage.interfaces import ITokenUsageRepository
+from ...infrastructure.telemetry.tracing import get_tracer
 
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class OpenAITaggingService(ITaggingService):
     """OpenAI implementation of intelligent tagging service"""
+    _tracer = get_tracer(__name__)
     
     # Mental health urgency keywords (repurposed from crisis detection for tagging accuracy)
     MENTAL_HEALTH_URGENCY_KEYWORDS = [
@@ -116,75 +118,84 @@ Respond ONLY with a JSON object containing:
 """
     
     async def extract_tags_from_message(
-        self, 
-        content: str, 
+        self,
+        content: str,
         user_context: Optional[Dict[str, Any]] = None
     ) -> TagExtractionResult:
         """Extract semantic tags from a chat message using OpenAI"""
-        
-        try:
-            # Check for mental health urgency keywords (for enhanced tagging accuracy)
-            content_lower = content.lower()
-            has_urgency_keywords = any(keyword in content_lower for keyword in self.MENTAL_HEALTH_URGENCY_KEYWORDS)
-            
-            # Build user message with context
-            user_message = f"Message content: {content}"
-            if user_context:
-                user_message += f"\n\nUser context: {json.dumps(user_context, indent=2)}"
-            
-            # Add urgency note if mental health urgency detected
-            if has_urgency_keywords:
-                user_message += "\n\nIMPORTANT: This message contains mental health urgency indicators. Please include tags like 'mental_health_urgency', 'immediate_support_needed', or 'therapeutic_intervention' with high confidence."
-            
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self.message_system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                max_tokens=300,
-                temperature=0.3
-            )
-            
-            # Parse the JSON response
-            result_text = response.choices[0].message.content.strip()
-            result_data = json.loads(result_text)
-            
-            # Log token usage if available
+
+        with self._tracer.start_as_current_span("emotionai.tagging.classify") as span:
+            span.set_attribute("input.length", len(content))
+            span.set_attribute("llm.model", self.model)
+            span.set_attribute("tagging.content_type", "message")
+
             try:
-                if self.token_usage_repo and hasattr(response, "usage") and response.usage:
-                    total = getattr(response.usage, "total_tokens", None) or response.usage.get("total_tokens", 0)
-                    prompt = getattr(response.usage, "prompt_tokens", None) or response.usage.get("prompt_tokens", 0)
-                    completion = getattr(response.usage, "completion_tokens", None) or response.usage.get("completion_tokens", 0)
-                    await self.token_usage_repo.log_usage(
-                        user_id=user_context.get("user_id") if user_context else None,
-                        interaction_type="tagging_message",
-                        total_tokens=int(total or 0),
-                        tokens_prompt=int(prompt or 0),
-                        tokens_completion=int(completion or 0),
-                        model=self.model,
-                        data_id=None,
-                        metadata={"source": "tagging_service"}
-                    )
-            except Exception as log_e:
-                logger.warning(f"Failed to log token usage (message): {log_e}")
-            
-            return TagExtractionResult(
-                tags=result_data.get("tags", []),
-                confidence=result_data.get("confidence", 0.0),
-                categories=result_data.get("categories", {}),
-                insights=result_data.get("insights", [])
-            )
-            
-        except Exception as e:
-            logger.error(f"Error extracting tags from message: {str(e)}")
-            # Return fallback tags
-            return TagExtractionResult(
-                tags=["user_message", "needs_analysis"],
-                confidence=0.1,
-                categories={"fallback": ["user_message"]},
-                insights=["Could not analyze message content"]
-            )
+                # Check for mental health urgency keywords (for enhanced tagging accuracy)
+                content_lower = content.lower()
+                has_urgency_keywords = any(keyword in content_lower for keyword in self.MENTAL_HEALTH_URGENCY_KEYWORDS)
+
+                # Build user message with context
+                user_message = f"Message content: {content}"
+                if user_context:
+                    user_message += f"\n\nUser context: {json.dumps(user_context, indent=2)}"
+
+                # Add urgency note if mental health urgency detected
+                if has_urgency_keywords:
+                    span.set_attribute("tagging.has_urgency_keywords", True)
+                    user_message += "\n\nIMPORTANT: This message contains mental health urgency indicators. Please include tags like 'mental_health_urgency', 'immediate_support_needed', or 'therapeutic_intervention' with high confidence."
+
+                response = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": self.message_system_prompt},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=300,
+                    temperature=0.3
+                )
+
+                # Parse the JSON response
+                result_text = response.choices[0].message.content.strip()
+                result_data = json.loads(result_text)
+
+                # Log token usage if available
+                try:
+                    if self.token_usage_repo and hasattr(response, "usage") and response.usage:
+                        total = getattr(response.usage, "total_tokens", None) or response.usage.get("total_tokens", 0)
+                        prompt = getattr(response.usage, "prompt_tokens", None) or response.usage.get("prompt_tokens", 0)
+                        completion = getattr(response.usage, "completion_tokens", None) or response.usage.get("completion_tokens", 0)
+                        span.set_attribute("llm.total_tokens", int(total or 0))
+                        await self.token_usage_repo.log_usage(
+                            user_id=user_context.get("user_id") if user_context else None,
+                            interaction_type="tagging_message",
+                            total_tokens=int(total or 0),
+                            tokens_prompt=int(prompt or 0),
+                            tokens_completion=int(completion or 0),
+                            model=self.model,
+                            data_id=None,
+                            metadata={"source": "tagging_service"}
+                        )
+                except Exception as log_e:
+                    logger.warning(f"Failed to log token usage (message): {log_e}")
+
+                tags = result_data.get("tags", [])
+                span.set_attribute("tagging.tag_count", len(tags))
+                return TagExtractionResult(
+                    tags=tags,
+                    confidence=result_data.get("confidence", 0.0),
+                    categories=result_data.get("categories", {}),
+                    insights=result_data.get("insights", [])
+                )
+
+            except Exception as e:
+                logger.error(f"Error extracting tags from message: {str(e)}")
+                # Return fallback tags
+                return TagExtractionResult(
+                    tags=["user_message", "needs_analysis"],
+                    confidence=0.1,
+                    categories={"fallback": ["user_message"]},
+                    insights=["Could not analyze message content"]
+                )
     
     async def extract_tags_from_emotional_record(
         self,
