@@ -131,3 +131,95 @@ Current state: **99% coverage** on `src/domain/` with 217 passing tests (plus 3 
 | `tests/domain/test_interfaces.py` | 34 | All 6 repository interfaces: ABC enforcement, async method contracts |
 
 Next slice: use case tests — where mocks first appear.
+
+---
+
+## Testing Use Cases
+
+### The Key Insight
+
+Use cases = business logic orchestration. They coordinate domain entities and infrastructure interfaces (repositories, services, event buses). The key rule: use cases depend on **interfaces**, not implementations. Tests inject `AsyncMock` for each interface, so you verify the "what and why" without touching a real database or making real HTTP calls.
+
+A use case test runs in milliseconds and never fails due to network timeouts or database schema changes.
+
+### Pattern: Inject AsyncMock, Assert Behaviour
+
+```python
+from unittest.mock import AsyncMock
+from src.application.usage.use_cases.get_monthly_usage_use_case import GetMonthlyUsageUseCase
+
+async def test_get_monthly_usage_returns_usage_for_valid_user():
+    mock_repo = AsyncMock()
+    mock_repo.get_monthly_usage.return_value = 4200
+
+    use_case = GetMonthlyUsageUseCase(token_usage_repository=mock_repo)
+    result = await use_case.execute(user_id=USER_ID, year=2026, month=3)
+
+    assert result == 4200
+    mock_repo.get_monthly_usage.assert_called_once_with(USER_ID, 2026, 3)
+```
+
+Three steps: (1) configure the mock to return known data, (2) call execute, (3) assert the result and how the mock was called.
+
+### What to Test
+
+**Happy path** — mock returns valid data, assert correct return value.
+
+**Error paths** — mock raises or returns None. Assert the use case raises the right exception or handles the failure correctly.
+
+```python
+async def test_get_monthly_usage_propagates_repository_exception():
+    mock_repo = AsyncMock()
+    mock_repo.get_monthly_usage.side_effect = RuntimeError("DB connection lost")
+    use_case = GetMonthlyUsageUseCase(token_usage_repository=mock_repo)
+
+    with pytest.raises(RuntimeError, match="DB connection lost"):
+        await use_case.execute(user_id=USER_ID, year=2026, month=3)
+```
+
+**Interaction verification** — assert the right methods were called with the right arguments. This verifies the use case is delegating correctly, not just producing the right output by coincidence.
+
+**Best-effort paths** — use cases often have non-critical side effects (token logging, event publishing, persisting suggestions) that must not abort the primary response if they fail.
+
+```python
+async def test_chat_token_logging_failure_does_not_abort_response():
+    token_repo = AsyncMock()
+    token_repo.log_usage.side_effect = Exception("logging DB down")
+    use_case = make_use_case(agent_service=mock_agent, token_usage_repo=token_repo)
+
+    result = await use_case.execute(user_id=USER_ID, agent_type="therapist", message="Hello")
+    assert result is response  # response returned despite logging failure
+```
+
+### What NOT to Test
+
+**That AsyncMock works** — you do not need to verify that `mock.some_method.return_value` gets returned. Mock the boundary, test your logic.
+
+**Infrastructure concerns** — do not reach into the mock to verify SQL queries or HTTP request bodies. That belongs in infrastructure tests.
+
+**Framework plumbing** — no FastAPI middleware, no SQLAlchemy sessions, no Redis connections in use case tests.
+
+### Helper Pattern: make_use_case()
+
+Use cases with many dependencies benefit from a `make_use_case()` helper that wires all-mocked defaults and accepts overrides:
+
+```python
+def make_use_case(**kwargs) -> AgentChatUseCase:
+    defaults = dict(
+        user_repository=AsyncMock(),
+        agent_service=AsyncMock(),
+        token_usage_repo=None,
+        # ... all other dependencies
+    )
+    defaults.update(kwargs)
+    return AgentChatUseCase(**defaults)
+```
+
+Each test then overrides only what matters: `make_use_case(agent_service=my_mock)`. This avoids repeating 10+ mock lines per test.
+
+### Current State
+
+| File | Tests | What It Covers |
+|---|---|---|
+| `tests/application/usage/use_cases/test_get_monthly_usage_use_case.py` | 7 | Happy path, zero usage, arg forwarding, default date, error propagation |
+| `tests/application/chat/use_cases/test_agent_chat_use_case.py` | 11 | Happy path, crisis passthrough, agent failure, token logging, best-effort skips |
