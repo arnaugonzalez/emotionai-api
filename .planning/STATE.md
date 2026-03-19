@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-19T19:20:01.907Z"
+last_updated: "2026-03-19T19:35:06.118Z"
 progress:
-  total_phases: 8
-  completed_phases: 7
-  total_plans: 12
-  completed_plans: 11
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: m2s3 (OpenTelemetry Tracing) — EXECUTING
-Plan: 2 of 2
+Phase: m2s3 (OpenTelemetry Tracing) — COMPLETE
+Plan: 2 of 2 (all plans done)
 
 ## Phase Progress
 
@@ -29,13 +29,14 @@ Plan: 2 of 2
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
-| m2s3 | OpenTelemetry Tracing | ◑ In Progress (1/2 plans done) |
+| m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
 - Phase m2s1.1 inserted after Phase m2s1: Improve `scripts/demo_flow.sh` each feature/tool to harden E2E learning path (metrics now, telemetry next) (URGENT)
+- Phase 01 added (pre-M3 clearance): architecture audit — endpoint review, simplification, redundancy removal, data management improvements, and AI readiness assessment for personalization and chat data gathering
 
 ### Codebase Facts
 
@@ -116,6 +117,8 @@ Plan: 2 of 2
 - [Phase m2s3]: setup_tracing() called before initialize_container() in lifespan so AsyncPGInstrumentor patches the driver before any DB connections are created
 - [Phase m2s3]: OTLPSpanExporter appends /v1/traces internally — caller passes base URL only
 - [Phase m2s3]: FastAPIInstrumentor excludes /health and /metrics to prevent probe traffic from polluting traces
+- [Phase m2s3]: Inject test provider tracer directly onto service._tracer instance rather than swapping global TracerProvider
+- [Phase m2s3]: emotionai.chat.llm_generate span wraps entire send_message body — parent span captures total LLM work time including context build
 
 ## Issues / Blockers
 
@@ -123,4 +126,4 @@ Plan: 2 of 2
 
 ## Last Updated
 
-2026-03-19T19:21:00Z — Completed m2s3-01-PLAN.md; next target is m2s3-02
+2026-03-19T19:33:57Z — Completed m2s3-02-PLAN.md; phase m2s3 complete
