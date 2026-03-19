@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: m1s1 — Test Infrastructure Setup
 status: executing
-last_updated: "2026-03-19T09:17:06Z"
+last_updated: "2026-03-19T09:35:53.156Z"
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -60,6 +60,8 @@ progress:
 - [Phase m1s1]: No fail_under coverage threshold until slice 1.2 ships domain tests
 - [Phase m1s1]: TestBase kept separate from production Base — production ORM uses PostgreSQL-specific UUID/JSONB types incompatible with SQLite
 - [Phase m1s1]: dependency-injector removed from requirements.txt — confirmed unused
+- [Phase m1s2-domain-entity-tests]: xfail(strict=True) used for 2 domain bugs: update_profile() crashes and is_profile_complete() returns None — bugs documented, not hidden
+- [Phase m1s2-domain-entity-tests]: coverage exclude_lines added for @abstractmethod and frozen dataclass dead branches — 2 genuinely unreachable lines remain
 
 ## Last Updated
 2026-03-19T09:17:06Z — Completed m1s1-01-PLAN.md (test infrastructure setup)
