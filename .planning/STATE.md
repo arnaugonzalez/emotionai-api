@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: m2s2 — Celery + Redis Task Queue
 status: completed
-last_updated: "2026-03-19T14:48:50.530Z"
+last_updated: "2026-03-19T19:03:27.650Z"
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 
 **Milestone:** 2 — Observability and async task infrastructure
 **Current Phase:** m2s2 — Celery + Redis Task Queue
-**Status:** m2s2-02 complete; ready to execute m2s2-03
+**Status:** m2s2-03 complete; ready to plan/execute m2s3
 
 ## Phase Progress
 
@@ -30,7 +30,7 @@ progress:
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
-| m2s2 | Celery + Redis Task Queue | ◐ In Progress (2/3 plans done) |
+| m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
 ## Accumulated Context
@@ -105,11 +105,13 @@ progress:
 - [Phase m2s2-celery-redis-task-queue]: Reused src.infrastructure.tasks.worker.celery_app instead of creating a second Celery instance in the container.
 - [Phase m2s2-celery-redis-task-queue]: Notification dispatch happens immediately after await session.commit() so workers only see committed records.
 - [Phase m2s2-celery-redis-task-queue]: Broker enqueue failures are logged and swallowed so record creation remains successful during Redis/Celery outages.
+- [Phase m2s2-celery-redis-task-queue]: Used the roadmap worker command inside timeout-driven docker smoke instead of import-only checks.
+- [Phase m2s2-celery-redis-task-queue]: Enabled Celery task events and Flower unauthenticated API access so verification can assert task SUCCESS programmatically.
+- [Phase m2s2-celery-redis-task-queue]: Switched smoke-path password hashing to pbkdf2_sha256 because the existing bcrypt setup blocked runtime registration in this environment.
 
 ## Issues / Blockers
 
 - Full regression suite still exits non-zero because three pre-existing `XPASS(strict)` domain tests now pass unexpectedly in `tests/domain/test_user.py`. These were carried forward from Milestone 1 and are not regressions from m2s1.
-- Docker smoke verification for Prometheus/Grafana could not run in this environment because the Docker daemon is unavailable at `/var/run/docker.sock`.
 
 ## Last Updated
-2026-03-19T14:48:00Z — Completed m2s2-02-PLAN.md; next target is m2s2-03-PLAN.md
+2026-03-19T19:03:27Z — Completed m2s2-03-PLAN.md; next target is m2s3 planning/execution

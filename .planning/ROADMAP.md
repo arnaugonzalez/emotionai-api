@@ -132,7 +132,7 @@ Tasks:
 - Ensure script outputs actionable pass/fail diagnostics for learning and demos
 
 ### 2.2 — Celery + Redis task queue
-Status: In Progress — plans `m2s2-01` and `m2s2-02` completed on 2026-03-19
+Status: Complete — plans `m2s2-01`, `m2s2-02`, and `m2s2-03` completed on 2026-03-19
 
 Research: read `src/infrastructure/container.py` (Redis wiring), `docker-compose.yml` (Redis service).
 Tasks:
