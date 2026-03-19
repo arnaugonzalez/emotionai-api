@@ -41,6 +41,8 @@ sentry-sdk[fastapi]>=2.6,<3
 # Performance
 redis>=5.1,<6
 hiredis>=2.2,<4
+celery[redis]>=5.3,<6
+flower>=2.0
 psutil>=5.9,<7
 
 # Types / Utils
