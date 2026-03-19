@@ -9,6 +9,7 @@ import logging
 import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any
+from prometheus_fastapi_instrumentator import Instrumentator
 from src import __version__ as app_version
 from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +61,10 @@ async def lifespan(app: FastAPI):
         
         # Store container in app state
         app.state.container = container
+
+        # Expose /metrics once the app is fully configured.
+        app.state.instrumentator.expose(app, include_in_schema=False)
+        logger.info("Prometheus /metrics endpoint exposed")
         
         logger.info("Application startup completed successfully")
         
@@ -119,6 +124,18 @@ def create_application() -> FastAPI:
             RateLimitingMiddleware,
             requests_per_minute=settings.rate_limit_requests
         )
+
+    # Prometheus instrumentation must be applied after all middleware so the
+    # full ASGI stack is visible to the instrumentator.
+    instrumentator = (
+        Instrumentator(
+            should_group_status_codes=True,
+            should_ignore_untemplated=True,
+            excluded_handlers=[r"/metrics", r"/health.*"],
+        )
+        .instrument(app)
+    )
+    app.state.instrumentator = instrumentator
     
     # Add exception handlers
     add_exception_handlers(app)

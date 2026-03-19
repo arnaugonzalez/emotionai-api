@@ -5,6 +5,7 @@ Handles agent conversations and related functionality.
 """
 
 import logging
+import time
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime, timezone
@@ -20,6 +21,11 @@ from ....application.dtos.chat_dtos import (
 from ....application.chat.use_cases.agent_chat_use_case import AgentChatUseCase
 from ....application.exceptions import ApplicationException
 from ....infrastructure.container import ApplicationContainer
+from ....infrastructure.metrics.custom_metrics import (
+    active_users_gauge,
+    chat_requests_total,
+    openai_latency_seconds,
+)
 from .deps import get_container, get_current_user_id
 
 router = APIRouter(redirect_slashes=False)
@@ -50,112 +56,132 @@ async def chat_with_agent(
     """Send a message to an AI agent and get response"""
     
     logger.info(f"Chat request received - User: {current_user_id}, Agent: {payload.agent_type}, Message length: {len(payload.message)}")
-    
-    try:
-        # Validate message length (limit to 700 chars from our side)
-        if payload.message is None or len(payload.message) == 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
-        if len(payload.message) > 700:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message must be at most 700 characters")
-        # Get the agent chat use case from container
-        chat_use_case: AgentChatUseCase = container.agent_chat_use_case
-        logger.info("Agent chat use case retrieved successfully")
-        
-        # Execute the use case
-        logger.info("Executing agent chat use case...")
-        response = await chat_use_case.execute(
-            user_id=current_user_id,
-            agent_type=payload.agent_type or "therapy",
-            message=payload.message,
-            context=payload.context or {}
-        )
-        logger.info(f"Use case executed successfully. Response type: {type(response)}")
-        logger.info(f"Response content: {response}")
-        
-        # Log response details for debugging
-        if isinstance(response, dict) and 'message' in response:
-            logger.info(f"Response message length: {len(response['message'])}")
-            logger.info(f"Response keys: {list(response.keys())}")
-        elif hasattr(response, 'message'):
-            logger.info(f"Response message length: {len(response.message)}")
-        else:
-            logger.warning(f"Response object missing 'message' attribute. Response: {response}")
-        
-        # Adapt domain response to API response schema expected by Flutter
+    start = time.perf_counter()
+
+    with active_users_gauge.track_inprogress():
         try:
-            if isinstance(response, dict):
-                # Handle dictionary response (fallback)
-                if 'message' not in response:
-                    raise ValueError("Response missing 'message' field")
-                if 'agent_type' not in response:
-                    raise ValueError("Response missing 'agent_type' field")
-                
-                api_response = ChatApiResponse(
-                    message=response['message'],
-                    agent_type=response['agent_type'],
-                    conversation_id=(response.get('conversation_id') or f"conv_{uuid4()}"),
-                    suggestions=[],
-                    timestamp=(response.get('timestamp') or "")
-                )
-            elif hasattr(response, 'message') and hasattr(response, 'agent_type'):
-                # Handle TherapyResponse object
-                api_response = ChatApiResponse(
-                    message=response.message,
-                    agent_type=response.agent_type,
-                    conversation_id=response.conversation_id,
-                    suggestions=response.follow_up_suggestions if hasattr(response, 'follow_up_suggestions') else [],
-                    timestamp=response.timestamp.isoformat() if response.timestamp else datetime.now(timezone.utc).isoformat()
-                )
-                
-                # Log therapeutic approach for debugging
-                if hasattr(response, 'therapeutic_approach'):
-                    logger.info(f"Therapeutic approach: {response.therapeutic_approach}")
-                if hasattr(response, 'crisis_detected') and response.crisis_detected:
-                    logger.warning("Crisis detected in therapy response")
-                    
+            # Validate message length (limit to 700 chars from our side)
+            if payload.message is None or len(payload.message) == 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
+            if len(payload.message) > 700:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message must be at most 700 characters")
+            # Get the agent chat use case from container
+            chat_use_case: AgentChatUseCase = container.agent_chat_use_case
+            logger.info("Agent chat use case retrieved successfully")
+
+            # Execute the use case
+            logger.info("Executing agent chat use case...")
+            response = await chat_use_case.execute(
+                user_id=current_user_id,
+                agent_type=payload.agent_type or "therapy",
+                message=payload.message,
+                context=payload.context or {}
+            )
+            logger.info(f"Use case executed successfully. Response type: {type(response)}")
+            logger.info(f"Response content: {response}")
+
+            # Log response details for debugging
+            if isinstance(response, dict) and 'message' in response:
+                logger.info(f"Response message length: {len(response['message'])}")
+                logger.info(f"Response keys: {list(response.keys())}")
+            elif hasattr(response, 'message'):
+                logger.info(f"Response message length: {len(response.message)}")
             else:
-                raise ValueError("Response object missing required attributes")
-                
-        except (KeyError, AttributeError, ValueError) as e:
-            logger.error(f"Error creating API response: {e}. Response: {response}")
+                logger.warning(f"Response object missing 'message' attribute. Response: {response}")
+
+            # Adapt domain response to API response schema expected by Flutter
+            try:
+                if isinstance(response, dict):
+                    # Handle dictionary response (fallback)
+                    if 'message' not in response:
+                        raise ValueError("Response missing 'message' field")
+                    if 'agent_type' not in response:
+                        raise ValueError("Response missing 'agent_type' field")
+
+                    api_response = ChatApiResponse(
+                        message=response['message'],
+                        agent_type=response['agent_type'],
+                        conversation_id=(response.get('conversation_id') or f"conv_{uuid4()}"),
+                        suggestions=[],
+                        timestamp=(response.get('timestamp') or "")
+                    )
+                elif hasattr(response, 'message') and hasattr(response, 'agent_type'):
+                    # Handle TherapyResponse object
+                    api_response = ChatApiResponse(
+                        message=response.message,
+                        agent_type=response.agent_type,
+                        conversation_id=response.conversation_id,
+                        suggestions=response.follow_up_suggestions if hasattr(response, 'follow_up_suggestions') else [],
+                        timestamp=response.timestamp.isoformat() if response.timestamp else datetime.now(timezone.utc).isoformat()
+                    )
+
+                    # Log therapeutic approach for debugging
+                    if hasattr(response, 'therapeutic_approach'):
+                        logger.info(f"Therapeutic approach: {response.therapeutic_approach}")
+                    if hasattr(response, 'crisis_detected') and response.crisis_detected:
+                        logger.warning("Crisis detected in therapy response")
+
+                else:
+                    raise ValueError("Response object missing required attributes")
+
+            except (KeyError, AttributeError, ValueError) as e:
+                logger.error(f"Error creating API response: {e}. Response: {response}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail={
+                        "error": "InvalidResponseFormat",
+                        "message": f"Invalid response format from agent service: {str(e)}",
+                        "details": {
+                            "response_type": type(response).__name__,
+                            "response_content": str(response)
+                        }
+                    }
+                )
+
+            crisis = getattr(response, "crisis_detected", False)
+            status_label = "crisis" if crisis else "success"
+            chat_requests_total.labels(
+                agent_type=payload.agent_type or "therapy",
+                status=status_label,
+            ).inc()
+            openai_latency_seconds.labels(call_type="chat_completion").observe(
+                time.perf_counter() - start
+            )
+
+            logger.info("API response created successfully")
+            return api_response
+
+        except ApplicationException as e:
+            chat_requests_total.labels(
+                agent_type=payload.agent_type or "therapy",
+                status="error",
+            ).inc()
+            logger.error(f"Application exception in chat: {e.__class__.__name__}: {e.message}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": e.__class__.__name__,
+                    "message": e.message,
+                    "details": e.details
+                }
+            )
+        except Exception as e:
+            chat_requests_total.labels(
+                agent_type=payload.agent_type or "therapy",
+                status="error",
+            ).inc()
+            logger.error(f"Unexpected error in chat endpoint: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={
-                    "error": "InvalidResponseFormat",
-                    "message": f"Invalid response format from agent service: {str(e)}",
+                    "error": "InternalServerError",
+                    "message": f"An unexpected error occurred while processing your request: {str(e)}",
                     "details": {
-                        "response_type": type(response).__name__,
-                        "response_content": str(response)
+                        "exception_type": type(e).__name__,
+                        "exception_message": str(e)
                     }
                 }
             )
-        
-        logger.info("API response created successfully")
-        return api_response
-        
-    except ApplicationException as e:
-        logger.error(f"Application exception in chat: {e.__class__.__name__}: {e.message}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": e.__class__.__name__,
-                "message": e.message,
-                "details": e.details
-            }
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error in chat endpoint: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "InternalServerError",
-                "message": f"An unexpected error occurred while processing your request: {str(e)}",
-                "details": {
-                    "exception_type": type(e).__name__,
-                    "exception_message": str(e)
-                }
-            }
-        )
 
 
 @router.get("/agents/{agent_type}/status", response_model=AgentStatusResponse, summary="Get agent status")

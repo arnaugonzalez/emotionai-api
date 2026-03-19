@@ -47,3 +47,4 @@ aiocache>=0.12.0  # Async caching
 httptools>=0.6.0  # Performance for uvicorn
 uvloop>=0.19.0  # Event loop for performance
 psutil>=5.9.0  # System monitoring for health checks
+prometheus-fastapi-instrumentator>=7.1.0
