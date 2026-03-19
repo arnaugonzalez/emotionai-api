@@ -71,6 +71,8 @@ register_step() {
   local description="$4"
   local function_name="$5"
 
+  # Stable extension contract for all future step modules:
+  # register_step <id> <section> <required:true|false> <description> <function_name>
   [[ -n "$id" && -n "$section" && -n "$required" && -n "$description" && -n "$function_name" ]] \
     || die "register_step requires: id section required description function"
   [[ -z "${DEMO_STEP_FUNCTION[$id]:-}" ]] || die "Duplicate step id: $id"
@@ -152,7 +154,11 @@ demo_run_step() {
     DEMO_RESULT_REASON["$step_id"]="OK"
   else
     DEMO_RESULT_STATUS["$step_id"]="FAIL"
-    DEMO_RESULT_REASON["$step_id"]="$(<"$step_reason_file" 2>/dev/null || echo "Step failed without reason")"
+    if [[ -s "$step_reason_file" ]]; then
+      DEMO_RESULT_REASON["$step_id"]="$(cat "$step_reason_file")"
+    else
+      DEMO_RESULT_REASON["$step_id"]="Step failed without reason"
+    fi
   fi
 
   if [[ -f "$step_artifact_file" ]]; then
@@ -204,7 +210,7 @@ demo_http_get() {
   fi
 
   DEMO_HTTP_STATUS="$(<"$DEMO_HTTP_STATUS_FILE")"
-  DEMO_HTTP_CONTENT_TYPE="$(awk 'BEGIN{IGNORECASE=1} /^Content-Type:/ {gsub("\r",""); print $2; exit}' "$DEMO_HTTP_HEADERS_FILE" 2>/dev/null || true)"
+  DEMO_HTTP_CONTENT_TYPE="$(awk 'tolower($1) == "content-type:" {gsub("\r",""); print $2; exit}' "$DEMO_HTTP_HEADERS_FILE" 2>/dev/null || true)"
   DEMO_HTTP_URL="$url"
   DEMO_HTTP_CURL_EXIT="$curl_exit"
 }
@@ -264,6 +270,22 @@ demo_assert_body_contains() {
     echo "remediation=${remediation}"
     echo "artifact=${DEMO_HTTP_BODY_FILE}"
     demo_fail_step "$artifact_dir" "Missing ${description}: ${needle}" "$DEMO_HTTP_BODY_FILE"
+    return 1
+  fi
+}
+
+demo_assert_content_type_contains() {
+  local artifact_dir="$1"
+  local needle="$2"
+  local remediation="$3"
+
+  if [[ "${DEMO_HTTP_CONTENT_TYPE:-}" != *"$needle"* ]]; then
+    echo "FAIL: unexpected content type"
+    echo "expected_substring=${needle}"
+    echo "actual=${DEMO_HTTP_CONTENT_TYPE:-unknown}"
+    echo "remediation=${remediation}"
+    echo "artifact=${DEMO_HTTP_HEADERS_FILE}"
+    demo_fail_step "$artifact_dir" "Unexpected content type: ${DEMO_HTTP_CONTENT_TYPE:-unknown}" "$DEMO_HTTP_HEADERS_FILE"
     return 1
   fi
 }
