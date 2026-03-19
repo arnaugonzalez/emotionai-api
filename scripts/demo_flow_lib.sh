@@ -262,13 +262,21 @@ demo_http_get() {
   local path="$1"
   local artifact_dir="$2"
   local label="$3"
+  local url="${DEMO_BASE_URL}${path}"
+
+  demo_http_get_url "$url" "$artifact_dir" "$label"
+}
+
+demo_http_get_url() {
+  local url="$1"
+  local artifact_dir="$2"
+  local label="$3"
 
   DEMO_HTTP_STATUS_FILE="${artifact_dir}/${label}.status"
   DEMO_HTTP_HEADERS_FILE="${artifact_dir}/${label}.headers"
   DEMO_HTTP_BODY_FILE="${artifact_dir}/${label}.body"
   DEMO_HTTP_STDERR_FILE="${artifact_dir}/${label}.stderr"
 
-  local url="${DEMO_BASE_URL}${path}"
   local curl_exit=0
 
   if curl --silent --show-error \
@@ -388,6 +396,35 @@ demo_file_contains() {
 demo_compose_has_service() {
   local service_name="$1"
   demo_file_contains "$(pwd)/docker-compose.yml" "  ${service_name}:"
+}
+
+demo_detect_compose_command() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DEMO_COMPOSE_CMD=(docker compose)
+    return 0
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    DEMO_COMPOSE_CMD=(docker-compose)
+    return 0
+  fi
+
+  return 1
+}
+
+demo_compose_service_running() {
+  local service_name="$1"
+  local services
+
+  if ! demo_detect_compose_command; then
+    return 2
+  fi
+
+  if ! services=$("${DEMO_COMPOSE_CMD[@]}" ps --status running --services 2>/dev/null); then
+    return 3
+  fi
+
+  grep -Fxq "$service_name" <<<"$services"
 }
 
 demo_print_summary() {

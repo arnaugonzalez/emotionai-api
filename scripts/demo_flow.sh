@@ -12,7 +12,8 @@ print_help() {
 Usage: bash scripts/demo_flow.sh [options]
 
 Options:
-  --section all|core|metrics  Run one section or all sections (default: all)
+  --section all|core|metrics|celery|otel
+                              Run one section or all sections (default: all)
   --list-steps                Print all discovered registered steps
   --base-url URL              Override the API base URL (default: http://127.0.0.1:8000)
   --help                      Show this help message
