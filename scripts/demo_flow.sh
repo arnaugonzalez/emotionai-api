@@ -1,190 +1,73 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =============================
-# Configuration
-# =============================
-BASE="http://127.0.0.1:8000"   # Local Uvicorn
-# BASE="https://emotionai.duckdns.org"  # Production behind Nginx/Let's Encrypt
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
 
-EMAIL="test@demo.com"
-PASSWORD="test123"
-FIRST="test"
-LAST="demo"
+# shellcheck source=scripts/demo_flow_lib.sh
+source "${SCRIPT_DIR}/demo_flow_lib.sh"
 
-have_jq() { command -v jq >/dev/null 2>&1; }
-pp_json() { if have_jq; then jq .; else cat; fi; }
+print_help() {
+  cat <<'EOF'
+Usage: bash scripts/demo_flow.sh [options]
 
-auth_header() {
-  echo "Authorization: Bearer $1"
+Options:
+  --section all|core|metrics  Run one section or all sections (default: all)
+  --list-steps                Print all discovered registered steps
+  --base-url URL              Override the API base URL (default: http://127.0.0.1:8000)
+  --help                      Show this help message
+EOF
 }
 
-gen_req_id() {
-  echo "$(date +%s%3N)-$RANDOM"
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --section)
+        [[ $# -ge 2 ]] || die "Missing value for --section"
+        DEMO_SECTION="$2"
+        shift 2
+        ;;
+      --list-steps)
+        DEMO_LIST_STEPS=true
+        shift
+        ;;
+      --base-url)
+        [[ $# -ge 2 ]] || die "Missing value for --base-url"
+        DEMO_BASE_URL="$2"
+        shift 2
+        ;;
+      --help)
+        DEMO_HELP=true
+        shift
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
 }
 
-# =============================
-# Health (root, no auth)
-# =============================
-echo "== HEALTH =="
-curl -sS "$BASE/health" | pp_json || true
-curl -sS "$BASE/health/detailed" | pp_json || true
+main() {
+  demo_init_defaults
+  parse_args "$@"
 
-# =============================
-# Auth: register/login/me/refresh
-# =============================
-echo "== AUTH: register =="
-REGISTER_RESP=$(curl -sS -X POST "$BASE/v1/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"'"$EMAIL"'","password":"'"$PASSWORD"'","first_name":"'"$FIRST"'","last_name":"'"$LAST"'"}')
-echo "$REGISTER_RESP" | pp_json
+  if [[ "$DEMO_HELP" == "true" ]]; then
+    print_help
+    return 0
+  fi
 
-if have_jq; then
-  ACCESS=$(echo "$REGISTER_RESP" | jq -r '.access_token')
-  REFRESH=$(echo "$REGISTER_RESP" | jq -r '.refresh_token')
-else
-  ACCESS=$(echo "$REGISTER_RESP" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
-  REFRESH=$(echo "$REGISTER_RESP" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p')
-fi
-echo "ACCESS: ${ACCESS:0:16}..."
+  demo_validate_section "$DEMO_SECTION"
+  demo_load_step_modules "${SCRIPT_DIR}/demo_steps"
 
-echo "== AUTH: me =="
-curl -sS "$BASE/v1/api/auth/me" -H "$(auth_header "$ACCESS")" | pp_json
+  if [[ "$DEMO_LIST_STEPS" == "true" ]]; then
+    demo_print_step_listing
+    return 0
+  fi
 
-echo "== AUTH: refresh (endpoint test only) =="
-if [[ -n "${REFRESH:-}" ]]; then
-  curl -sS -X POST "$BASE/v1/api/auth/refresh" \
-    -H "Content-Type: application/json" \
-    -d '{"refresh_token":"'"$REFRESH"'"}' | pp_json
-else
-  echo "(refresh_token not available)"
-fi
+  demo_print_run_header
+  demo_run_registered_steps
+  demo_print_summary
+  demo_exit_for_results
+}
 
-# =============================
-# Profile
-# =============================
-echo "== PROFILE: create/update =="
-curl -sS -X POST "$BASE/v1/api/profile" \
-  -H "Content-Type: application/json" \
-  -H "$(auth_header "$ACCESS")" \
-  -d '{
-        "first_name":"'"$FIRST"'",
-        "last_name":"'"$LAST"'",
-        "user_profile_data":{"personality":"INTJ"}
-      }' | pp_json
-
-echo "== PROFILE: get =="
-curl -sS "$BASE/v1/api/profile" -H "$(auth_header "$ACCESS")" | pp_json
-
-echo "== PROFILE: status =="
-curl -sS "$BASE/v1/api/profile/status" -H "$(auth_header "$ACCESS")" | pp_json
-
-echo "== PROFILE: therapy-context PUT/GET/DELETE =="
-curl -sS -X PUT "$BASE/v1/api/profile/therapy-context" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"therapy_context":{"topic":"sleep"}}' | pp_json
-curl -sS "$BASE/v1/api/profile/therapy-context" -H "$(auth_header "$ACCESS")" | pp_json
-curl -sS -X DELETE "$BASE/v1/api/profile/therapy-context" -H "$(auth_header "$ACCESS")" | pp_json
-
-# =============================
-# Data: custom emotions
-# =============================
-echo "== DATA: create custom emotion =="
-curl -sS -X POST "$BASE/v1/api/custom_emotions/" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"name":"gratitude","color":16776960}' | pp_json
-
-echo "== DATA: list custom emotions =="
-curl -sS "$BASE/v1/api/custom_emotions/" -H "$(auth_header "$ACCESS")" | pp_json
-
-# =============================
-# Records: emotional records
-# =============================
-echo "== RECORDS: create standard =="
-curl -sS -X POST "$BASE/v1/api/emotional_records/" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"emotion":"happy","intensity":7,"description":"Feeling good via demo"}' | pp_json
-
-echo "== RECORDS: create from custom emotion =="
-curl -sS -X POST "$BASE/v1/api/emotional_records/from_custom_emotion" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"custom_emotion_name":"gratitude","custom_emotion_color":16776960,"intensity":6,"description":"Grateful"}' | pp_json
-
-echo "== RECORDS: list =="
-curl -sS "$BASE/v1/api/emotional_records/" -H "$(auth_header "$ACCESS")" | pp_json
-
-# =============================
-# Breathing: sessions & patterns
-# =============================
-echo "== BREATHING: create session =="
-curl -sS -X POST "$BASE/v1/api/breathing_sessions/" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"pattern":"Box Breathing","rating":4,"comment":"Nice"}' | pp_json
-
-echo "== BREATHING: list sessions =="
-curl -sS "$BASE/v1/api/breathing_sessions/" -H "$(auth_header "$ACCESS")" | pp_json
-
-echo "== BREATHING: create pattern =="
-curl -sS -X POST "$BASE/v1/api/breathing_patterns/" \
-  -H "Content-Type: application/json" -H "$(auth_header "$ACCESS")" \
-  -d '{"name":"Custom 4-4-6","inhale_seconds":4,"hold_seconds":0,"exhale_seconds":6,"cycles":5,"rest_seconds":0}' | pp_json
-
-echo "== BREATHING: list patterns =="
-curl -sS "$BASE/v1/api/breathing_patterns/" -H "$(auth_header "$ACCESS")" | pp_json
-
-# =============================
-# Usage
-# =============================
-echo "== USAGE: user limitations =="
-curl -sS "$BASE/v1/api/user/limitations" -H "$(auth_header "$ACCESS")" | pp_json
-
-# =============================
-# Chat (may require API keys for LLM)
-# =============================
-echo "== CHAT: agents list =="
-curl -sS "$BASE/v1/api/agents" -H "$(auth_header "$ACCESS")" | pp_json
-
-echo "== CHAT: status (therapy) =="
-curl -sS "$BASE/v1/api/agents/therapy/status" -H "$(auth_header "$ACCESS")" | pp_json || true
-
-echo "== CHAT: send message =="
-curl -sS -X POST "$BASE/v1/api/chat" \
-  -H "Content-Type: application/json" \
-  -H "$(auth_header "$ACCESS")" \
-  -H "X-Request-ID: $(gen_req_id)" \
-  -d "{\"agent_type\":\"therapy\",\"message\":\"Hello, I'm feeling good.\"}" | pp_json || true
-
-echo "== CHAT: clear memory (therapy) =="
-curl -sS -X DELETE "$BASE/v1/api/agents/therapy/memory" -H "$(auth_header "$ACCESS")" | pp_json || true
-
-# =============================
-# Realtime WS (token in query)
-# =============================
-echo "== REALTIME: calendar/ws =="
-WS_URL="$(echo "$BASE" | sed 's#^http#wss#')/v1/api/calendar/ws?token=$ACCESS"
-echo "Connect with: wscat -c \"$WS_URL\""
-
-# =============================
-# Mobile Logs (optional)
-# =============================
-if [[ "${MOBILE_LOGS:-false}" == "true" ]]; then
-  echo "== MOBILE LOGS: send sample batch =="
-  curl -sS -X POST "$BASE/v1/api/mobile-logs" \
-    -H "Content-Type: application/json" \
-    -H "$(auth_header "$ACCESS")" \
-    -d '[
-      {"ts_iso":"'"$(date -u +%Y-%m-%dT%H:%M:%S)"'","level":"info","event":"request.start","request_id":"demo-1","method":"GET","url":"/v1/api/emotional_records/"},
-      {"ts_iso":"'"$(date -u +%Y-%m-%dT%H:%M:%S)"'","level":"info","event":"request.end","request_id":"demo-1","status":200,"latency_ms":123}
-    ]' | pp_json || true
-fi
-
-# =============================
-# Dev seed (development environment only)
-# =============================
-echo "== DEV SEED: load preset data (dev only) =="
-curl -sS -X POST "$BASE/v1/api/dev/seed/load_preset_data" -H "$(auth_header "$ACCESS")" | pp_json || true
-
-echo "== DEV SEED: reset (dev only) =="
-curl -sS -X POST "$BASE/v1/api/dev/seed/reset" -H "$(auth_header "$ACCESS")" | pp_json || true
-
-echo "\nDemo flow completed."
+main "$@"
