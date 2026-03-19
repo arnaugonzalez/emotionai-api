@@ -122,7 +122,7 @@ Tasks:
 - Write `docs/learning/prometheus_fastapi.md`
 
 ### 2.1.1 — Demo flow hardening for E2E learning path (INSERTED)
-Status: Pending (inserted 2026-03-19)
+Status: In progress — plan `m2s1.1-01` completed on 2026-03-19; `m2s1.1-02` pending
 
 Research: review `scripts/demo_flow.sh`, API route contracts for `/metrics`, and upcoming observability endpoints (Celery/Flower + OTEL/Jaeger) to keep one durable E2E learning path.
 Tasks:

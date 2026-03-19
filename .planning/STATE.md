@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: m2s1.1 — Demo Flow Hardening (INSERTED)
-status: pending
-last_updated: "2026-03-19T13:03:35.189Z"
+status: in_progress
+last_updated: "2026-03-19T13:30:20Z"
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 10
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 
 **Milestone:** 2 — Observability and async task infrastructure
 **Current Phase:** m2s1.1 — Demo Flow Hardening (INSERTED)
-**Status:** m2s1 complete; urgent inserted phase pending planning
+**Status:** m2s1.1 plan 01 complete; plan 02 pending
 
 ## Phase Progress
 
@@ -29,7 +29,7 @@ progress:
 | m1s3 | Use Case Tests | ● Complete (1/1 plan done) |
 | m1s4 | Router Integration Tests | ● Complete (1/1 plan done) |
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
-| m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ○ Pending (0/0 plans done) |
+| m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ◐ In Progress (1/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ○ Pending (0/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
 
@@ -48,6 +48,8 @@ progress:
 - Prometheus `/metrics` is exposed from FastAPI lifespan via `app.state.instrumentator`
 - Custom metrics live in `src/infrastructure/metrics/custom_metrics.py`
 - Local observability stack now includes Prometheus scrape config and Grafana provisioning
+- `scripts/demo_flow.sh` is now a section-aware demo runner that loads additive step modules from `scripts/demo_steps/*.sh`
+- `scripts/demo_flow_lib.sh` centralizes step registration, execution summaries, and reusable HTTP assertion helpers
 - aiosqlite 0.22.1 installed in .venv
 - Duplicate agent_chat_use_case.py TECH_DEBT: root copy at src/application/use_cases/ does NOT exist (already cleaned up); canonical at src/application/chat/use_cases/agent_chat_use_case.py
 - deps.py (src/presentation/api/routers/deps.py) is clean — no hardcoded UUID bypass; uses JWT via src/presentation/dependencies.py
@@ -63,6 +65,10 @@ progress:
 - `src/infrastructure/metrics/custom_metrics.py`
 - `prometheus/prometheus.yml`
 - `grafana/provisioning/dashboards/emotionai.json`
+- `scripts/demo_flow.sh`
+- `scripts/demo_flow_lib.sh`
+- `scripts/demo_steps/00_core.sh`
+- `scripts/demo_steps/10_metrics.sh`
 
 ### Decisions Made
 - No fail_under threshold in coverage config until slice 1.2 (domain tests) ships
@@ -83,6 +89,9 @@ progress:
 - [Phase m2s1-prometheus-instrumentation]: Stored the Prometheus Instrumentator on app.state and exposed /metrics during lifespan startup.
 - [Phase m2s1-prometheus-instrumentation]: Pre-initialized bounded labelsets so labeled metric families appear in /metrics before the first chat request.
 - [Phase m2s1-prometheus-instrumentation]: Used track_inprogress() to represent active users as concurrent in-flight chat handlers.
+- [Phase m2s1.1-demo-flow-hardening]: `scripts/demo_flow.sh` remains the canonical entry point while orchestration moves into `scripts/demo_flow_lib.sh` and step modules.
+- [Phase m2s1.1-demo-flow-hardening]: Metrics verification is strict: `/metrics` must return 200, expose Prometheus text headers, and include the three required EmotionAI metric families.
+- [Phase m2s1.1-demo-flow-hardening]: Future observability checks must register through `register_step` so selection and ordering stay in the shared runner.
 
 ## Issues / Blockers
 
@@ -90,4 +99,4 @@ progress:
 - Docker smoke verification for Prometheus/Grafana could not run in this environment because the Docker daemon is unavailable at `/var/run/docker.sock`.
 
 ## Last Updated
-2026-03-19T11:57:00Z — Completed m2s1-01-PLAN.md (Prometheus instrumentation)
+2026-03-19T13:30:20Z — Completed m2s1.1-01-PLAN.md (Demo flow hardening runner + metrics path)
