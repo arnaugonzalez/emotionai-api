@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan management"""
     
     # Startup
-    logger.info("Starting EmotionAI API with Clean Architecture...")
+    logger.info("Starting EmotionAI API...")
     
     try:
         # Initialize container with settings
@@ -90,7 +90,7 @@ def create_application() -> FastAPI:
     
     app = FastAPI(
         title=settings.app_name,
-        description="Enterprise-grade EmotionAI API with Clean Architecture",
+        description="EmotionAI API: A comprehensive API for emotion recognition and analysis.",
         version=app_version,
         debug=settings.debug,
         lifespan=lifespan,

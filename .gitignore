@@ -237,3 +237,13 @@ charts/*/requirements.lock
 
 # CI/CD
 .github/workflows/secrets.yml
+
+# GSD md files
+.planning/
+
+# tmp files
+*/.tmp/
+
+# Uppercase underscore Markdown files (except README.md)
+[A-Z0-9]*_[A-Z0-9_]*.md
+!README.md
