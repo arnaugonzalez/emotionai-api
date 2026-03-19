@@ -1,455 +1,713 @@
-# Codebase Concerns — EmotionAI API
+# Codebase Concerns
 
 **Analysis Date:** 2026-03-19
 
 ---
 
-## Tech Debt Overview
+## Pre-Flight Investigation Findings
 
-The EmotionAI API has **36 documented technical debt items** across 4 severity levels: P0 (security/correctness blockers), P1 (architecture/reliability), P2 (performance/missing features), P3 (hygiene/polish).
+### 1. Dependency Injection Wiring (container.py)
 
-Total: **8 P0**, **13 P1**, **11 P2**, **4 P3**
+**File**: `src/infrastructure/container.py`
 
----
+**Status**: Properly implemented with clear composition root pattern.
 
-## P0 — Security & Correctness Blockers
+**DI Structure**:
+- All repositories properly instantiated: `SqlAlchemyUserRepository`, `SqlAlchemyEmotionalRepository`, `SqlAlchemyBreathingRepository`, `SqlAlchemyConversationRepository`, `SqlAlchemyEventRepository`, `SqlAlchemyAnalyticsRepository`
+- Services wired in order: LLM service (OpenAI or Anthropic), event bus (Redis), tagging service
+- Container provides health checks and metrics endpoints
 
-These block release and expose the system to financial risk, data breaches, or complete authentication bypass.
+**Stub Services Identified**:
+- `MockUserKnowledgeService` (line 156) - initialized but returns empty/dummy data
+- `MockSimilaritySearchService` (line 157) - initialized but returns empty lists
+- Both marked with TODO comments for replacement with full implementations
 
-### Authentication & Secrets
-
-**TD-002 · No Password Hashing**
-- Issue: All users created with plaintext `hashed_password="dev"` stub. Registration endpoint doesn't accept password. Login endpoint only checks email existence — no password verification.
-- Files: `src/presentation/api/routers/auth.py` L60, `routers/records.py` L236, `routers/health.py` L41, `routers/dev_seed.py` L94
-- Impact: Any user can log in as any other user by knowing their email. Zero authentication security. Production risk: complete user impersonation.
-- Fix approach: Accept `password` field in registration, hash with `passlib[bcrypt]` (already in requirements), verify password hash on login, enforce during onboarding.
-
-**TD-003 · Authentication Bypass — Fallback to Hardcoded UUID**
-- Issue: `get_current_user_id` uses three-tier fallback: (1) `X-User-Id` header (spoofable), (2) Bearer token parsed as raw UUID without JWT validation, (3) hardcoded fallback UUID `550e8400-e29b-41d4-a716-446655440000`.
-- Files: `src/presentation/api/routers/deps.py` L30–50
-- Impact: Complete IDOR vulnerability. Any request without auth accesses placeholder user's data. `X-User-Id` header allows any client to impersonate any user. All user data leaks.
-- Fix approach: Validate JWT from `Authorization` header using proper JWT library. Remove X-User-Id bypass and hardcoded fallback. Return 401 on invalid/missing tokens. Use `_parse_jwt` from `dependencies.py` everywhere.
-
-**TD-004 · Hardcoded Default Secret Key**
-- Issue: JWT signing key has default `"your-secret-key-here-change-in-production"` in `src/infrastructure/config/settings.py` L54. Validation only runs in production and logs warning instead of refusing startup.
-- Files: `src/infrastructure/config/settings.py` L54
-- Impact: In dev/staging, tokens signed with default key allow JWT forgery. Attackers can forge tokens if they know the default key (widely visible in code).
-- Fix approach: Remove default value. Make `SECRET_KEY` required in all environments. Fail immediately at startup (before app init) if missing.
-
-**TD-005 · Duplicate `get_current_user_id` with Different Behavior**
-- Issue: Two independent implementations. `src/presentation/api/routers/deps.py` used by most routers. `src/presentation/dependencies.py` used by profile router — **always returns mock UUID regardless of token**.
-- Files: `src/presentation/api/routers/deps.py` L24–50 vs `src/presentation/dependencies.py` L29–47
-- Impact: Profile endpoints always operate on single hardcoded user. Profile get/put requests ignore the actual logged-in user.
-- Fix approach: Consolidate to single `get_current_user_id` with proper JWT validation. Delete the unused implementation. Update profile router to use shared dependency.
-
-### Data Integrity & Async
-
-**TD-006 · All Core Repositories Are Empty Stubs**
-- Issue: All repositories registered in DI container but return `None`/`[]`/`True` with `# TODO` placeholders. Routers bypass them with direct `session.execute(select(Model)...)` queries.
-- Files:
-  - `src/infrastructure/repositories/sqlalchemy_user_repository.py` (all methods stub)
-  - `src/infrastructure/records/repositories/sqlalchemy_emotional_repository.py` (get_by_id returns None)
-  - `src/infrastructure/breathing/repositories/sqlalchemy_breathing_repository.py`
-  - `src/infrastructure/events/repositories/sqlalchemy_event_repository.py`
-  - `src/infrastructure/analytics/repositories/sqlalchemy_analytics_repository.py`
-- Impact: Clean architecture is facade. AI agent has no user context for personalization. Business logic cannot enforce invariants. Schema changes require edits in every router.
-- Fix approach: Implement actual SQLAlchemy queries in each repository. Refactor routers to call use cases instead of directly accessing DB. Add proper error handling and transaction semantics.
-
-**TD-007 · Blocking Sync Call in Async Context**
-- Issue: `_check_duplicate_record` in `records.py` uses `session.execute(query)` (sync) instead of `await session.execute(query)`. Blocks event loop during duplicate check + Levenshtein distance calculation.
-- Files: `src/presentation/api/routers/records.py` L64–90
-- Impact: Under concurrent load, blocks all other requests while check runs. Single slow request stalls entire API.
-- Fix approach: Change to `await session.execute(query)`, make function `async def`, profile Levenshtein performance or cache common strings.
-
-**TD-008 · OpenAI Tagging Service Uses Sync Client in Async App**
-- Issue: Uses `openai.OpenAI()` (synchronous) instead of `openai.AsyncOpenAI()`. All calls to `self.client.chat.completions.create()` block async event loop. Called on every tagged interaction.
-- Files: `src/infrastructure/services/openai_tagging_service.py` L33
-- Impact: Every tagging call (1–5 seconds) blocks all other async operations. Response latency spikes. Scale breaks at low concurrency.
-- Fix approach: Switch to `openai.AsyncOpenAI`. Change `create()` calls to `await create()`. Validate that `openai_llm_service.py` already uses AsyncOpenAI correctly (it does).
+**Critical Issue**: The mock services are wired into the production container and passed to `AgentChatUseCase`. They silently return no data, which degrades semantic memory capabilities but doesn't fail loudly.
 
 ---
 
-## P1 — Architecture & Reliability
+### 2. Authentication and Authorization Concerns (deps.py)
 
-These damage code maintainability, introduce fragile abstractions, or cause data loss in edge cases.
+**File**: `src/presentation/api/routers/deps.py`
 
-### Architecture Violations
+**Status**: Centralized JWT dependency but potential issues identified.
 
-**TD-009 · Routers Directly Access Database Models**
-- Issue: Every router imports SQLAlchemy models and performs direct `session.execute(select(Model)...)` queries. This is presentation → infrastructure dependency, violating clean architecture. Application/use-case layer completely bypassed.
-- Files: All routers in `src/presentation/api/routers/`
-- Impact: No business logic enforcement. No domain events fired. Schema changes require edits in every router. Impossible to audit data access.
-- Fix approach: Route all data access through use cases that delegate to repositories. Routers should only call use cases and map response DTOs. Implement missing use cases.
+**Current Implementation**:
+- Delegates to `_jwt_get_current_user_id` from `src/presentation/dependencies.py`
+- Uses `HTTPBearer` security scheme with token extraction
 
-**TD-018 · Inconsistent Router Prefix Strategy**
-- Issue: Routes mounted with mixed prefixes: `health_router` → `/health`, `chat_router` → `/api/v1`, `records_router` → no prefix, `breathing_router` → no prefix. Flutter client expects `/v1/api/...` per contract.
-- Files: `main.py` L128–140
-- Impact: Mobile app routes break if endpoints shift. No consistent API versioning strategy.
-- Fix approach: Mount all routers under consistent `/v1/api` prefix. Use middleware for `v1` versioning. Validate against actual Flutter client expectations.
+**Dependencies File Analysis** (`src/presentation/dependencies.py`):
+- Line 28-45: `get_current_user_id` validates JWT with proper error handling
+- Checks: token type (`typ`), subject presence, issuer validation
+- Throws `HTTPException(401)` on validation failure
 
-### Duplicate Code & Dead Abstractions
+**No hardcoded UUID fallback detected** in either file. The pre-flight checklist concern about "auth bypass via hardcoded UUID fallback" is not present in current code — this may have been previously fixed (see recent commits showing P0 tech debt fixes).
 
-**TD-010 · Duplicate Tagging Service Implementation**
-- Issue: Two near-identical implementations. Container imports from `src/infrastructure/tagging/services/openai_tagging_service.py`. Root-level `src/infrastructure/services/openai_tagging_service.py` still exists (418 lines vs 358 lines).
-- Files:
-  - `src/infrastructure/services/openai_tagging_service.py` (418 lines, unused)
-  - `src/infrastructure/tagging/services/openai_tagging_service.py` (canonical, 358 lines)
-- Impact: Changes to one won't propagate to the other. They silently diverge. Hard to track which is active.
-- Fix approach: Delete root-level file. Verify all imports point to nested location. Run grep for remaining references.
-
-**TD-011 · Duplicate Data Validators**
-- Issue: Same validation function names in two modules with different implementations.
-- Files:
-  - `src/data_validators.py` (84 lines, simpler)
-  - `src/presentation/api/validators/data_validators.py` (198 lines, comprehensive)
-- Impact: Unclear which validator is used. Root-level one appears unused but adds confusion.
-- Fix approach: Delete `src/data_validators.py`. Verify imports in all routers use the full implementation.
-
-**TD-012 · Duplicate Use Case Classes with Incompatible APIs**
-- Issue: Two `AgentChatUseCase` files with **different signatures**:
-  - `src/application/use_cases/agent_chat_use_case.py` uses `@dataclass`, takes `ChatRequest`
-  - `src/application/chat/use_cases/agent_chat_use_case.py` uses plain `__init__`, takes individual params
-- Files:
-  - `src/application/use_cases/agent_chat_use_case.py` (dead, full tagging+knowledge pipeline)
-  - `src/application/chat/use_cases/agent_chat_use_case.py` (canonical, container imports this)
-- Impact: Root-level has intelligent tagging logic but is never called. Nested one is used but doesn't have same capabilities.
-- Fix approach: Merge tagging logic from root-level into nested one. Delete root-level file. Update container if needed.
-
-**TD-013 · Duplicate Tagging Service Interface**
-- Issue: Same `ITaggingService` interface defined in two locations with potential divergence.
-- Files:
-  - `src/application/services/tagging_service.py`
-  - `src/application/tagging/services/tagging_service.py`
-- Impact: Implementations may reference different contracts. Refactoring becomes fragile.
-- Fix approach: Keep nested location `src/application/tagging/services/`. Delete root-level. Update all imports.
-
-**TD-014 · Shadowed `get_container` Redefinitions**
-- Issue: Multiple routers import `get_container` from `deps` then redefine it locally, shadowing the import.
-- Files: `src/presentation/api/routers/chat.py` L29–32, `src/presentation/api/routers/health.py` L20–22
-- Impact: Unnecessary redefinition increases confusion. Inconsistent pattern across codebase.
-- Fix approach: Remove local redefinitions. Use shared import from `deps.py`.
-
-### Broken Abstractions & Mocks
-
-**TD-015 · Redis Event Bus Is a Complete No-Op**
-- Issue: Every method is `pass`. `health_check()` always returns `True` even if Redis is unreachable.
-- Files: `src/infrastructure/services/redis_event_bus.py`
-- Impact: Domain events silently dropped. Health check falsely reports Redis OK. Event-driven features don't work.
-- Fix approach: Implement actual Redis pub/sub. Measure publish latency. At minimum, make health_check ping Redis and check response.
-
-**TD-016 · Conversation History Returns Hardcoded Data**
-- Issue: `GET /conversations` endpoint always returns same static placeholder regardless of user.
-- Files: `src/presentation/api/routers/chat.py` L237–256
-- Impact: Conversation history feature is broken. Clients show fake data to users.
-- Fix approach: Query actual ConversationModel from database using user_id. Filter by user ownership.
-
-**TD-017 · `LLMProviderFactory` Is a Mock**
-- Issue: Always returns `MockLLMProvider` with hardcoded responses. Health check falsely reports `["openai", "anthropic"]` available.
-- Files: `src/infrastructure/external/llm_providers.py`
-- Impact: Health endpoint lies about LLM availability. Cannot switch providers.
-- Fix approach: Implement properly or remove factory. Use `OpenAILLMService.health_check()` directly.
-
-### Data Flow & Token Tracking
-
-**TD-019 · Token Usage Not Tracked for Main Chat Responses**
-- Issue: LLM service generates GPT-4 responses but never logs token consumption. Only tagging service tracks tokens.
-- Files: `src/infrastructure/services/openai_llm_service.py`
-- Impact: Usage endpoint reports inaccurate counts. Users hit limits unpredictably. No cost visibility.
-- Fix approach: Inject `ITokenUsageRepository` into `OpenAILLMService`. Log tokens after each API call using response metadata (`usage.prompt_tokens`, `usage.completion_tokens`).
-
-**TD-020 · Health Check Creates Database Records**
-- Issue: `GET /health` creates placeholder user in non-production environments on every request.
-- Files: `src/presentation/api/routers/health.py` L30–47
-- Impact: Health checks should be read-only. Pollutes database with garbage users.
-- Fix approach: Move user creation to startup lifecycle or dev seed endpoint. Health check should only query, never write.
-
-### Deprecated Patterns
-
-**TD-021 · Deprecated `datetime.utcnow()` Used Everywhere**
-- Issue: `datetime.utcnow()` is deprecated since Python 3.12. Returns naive datetime without timezone info.
-- Files: 20+ occurrences in `domain/entities/user.py`, `domain/events/domain_events.py`, `infrastructure/services/`, `application/dtos/chat_dtos.py`
-- Impact: Naive datetimes lose timezone context. Comparisons may fail across DST boundaries. Deprecation warning in Python 3.12+.
-- Fix approach: Replace all `datetime.utcnow()` with `datetime.now(timezone.utc)` throughout. Test datetime edge cases.
+**Minor Issue**: Duplicate `get_current_user_id` implementations:
+- `src/presentation/dependencies.py` (line 28) - canonical JWT-parsing version
+- `src/presentation/api/routers/deps.py` (line 25-29) - delegates to above
+- This duplication is redundant but not dangerous
 
 ---
 
-## P2 — Performance & Missing Functionality
+### 3. Test Suite Existence and Structure
 
-These cause slowdowns, missing features, or dead dependencies that inflate supply chain risk.
+**Test Directory**: `/home/eager-eagle/code/emotionai/emotionai-api/tests/`
 
-### Missing Endpoints & Features
+**Status**: Directory exists but appears empty or minimal.
 
-**TD-022 · Missing Pagination on All List Endpoints**
-- Issue: All list endpoints return **all records** for a user with no `limit`/`offset` parameters.
-- Files: `routers/records.py` L155, `routers/breathing.py` L41, `routers/data.py` L41
-- Impact: Response time degrades as data grows. Unbounded payloads. Violates REST best practices.
-- Fix approach: Add `limit: int = 50` and `offset: int = 0` query parameters. Apply `.limit().offset()` in SQLAlchemy queries. Document defaults in OpenAPI.
+**Findings**:
+- `.pytest_cache` directory present (line: `drwxrwxr-x  3 eager-eagle eager-eagle  4096 Mar 18 19:33 .pytest_cache`)
+- No `pytest.ini`, `conftest.py`, or `pyproject.toml` with `[tool.pytest]` config found in project root
+- No unit test files discovered in project tree
 
-**TD-023 · No DELETE Endpoints for Any Resource**
-- Issue: No CRUD resources have `DELETE` endpoints. Flutter app cannot delete data from server.
-- Files: All routers
-- Impact: Users cannot correct mistakes or remove old data. Data accumulation. Privacy concern.
-- Fix approach: Add `DELETE /{resource}/{id}` endpoints for emotional_records, breathing_sessions, custom_emotions. Validate ownership. Soft-delete or hard-delete per policy.
+**Test Files Expected but Not Found**:
+- `test_integration.py` (mentioned in TECH_DEBT.md as only integration tests)
+- `test_database_integrations.py` (mentioned in TECH_DEBT.md as only integration tests)
 
-**TD-024 · No UPDATE Endpoints for Records/Sessions**
-- Issue: No `PUT`/`PATCH` endpoints. Once created, data cannot be corrected.
-- Files: `routers/records.py`, `routers/breathing.py`
-- Impact: Users locked into incorrect data. No data correction flow.
-- Fix approach: Add `PUT /{resource}/{id}` with full replacement or `PATCH` with partial updates. Validate ownership. Update timestamp.
-
-**TD-025 · Hardcoded Monthly Token Limit**
-- Issue: 250K limit hardcoded in router. Cannot be changed per-user, per-plan, or via configuration.
-- Files: `src/presentation/api/routers/usage.py` L30
-- Impact: Cannot implement tiered pricing. All users same limit. No way to test quota enforcement.
-- Fix approach: Move to `settings.py` with env var override. Add per-user limit column in database. Check during chat to enforce.
-
-### Performance & Scaling
-
-**TD-026 · In-Memory Rate Limiting Won't Scale**
-- Issue: Uses in-memory `defaultdict(list)`. With `workers: 4`, each worker maintains independent counters. Dictionary grows unboundedly.
-- Files: `src/presentation/api/middleware/rate_limiting.py`
-- Impact: With 4 workers, limit is 4× higher than configured (400 requests instead of 100). Unbounded dict memory leak.
-- Fix approach: Use Redis-backed sliding window rate limiting. Use `INCR` with `EXPIRE` pattern. Share counters across workers.
-
-### Database & Repository Issues
-
-**TD-027 · Conversation Repository Bypasses Session Context Manager**
-- Issue: Uses `async_session_factory()` directly instead of `self.database.get_session()`, bypassing automatic commit/rollback/cleanup.
-- Files: `src/infrastructure/conversations/repositories/sqlalchemy_conversation_repository.py` L48
-- Impact: Transactions may not commit/rollback properly. Resources may leak.
-- Fix approach: Use `async with self.database.get_session() as session:` consistently. Review all repositories.
-
-**TD-028 · Conversation Repository Stores UUIDs as Strings**
-- Issue: Model defines `Column(UUID(as_uuid=True))` but repository passes `str(uuid4())`.
-- Files: `src/infrastructure/conversations/repositories/sqlalchemy_conversation_repository.py` L39–42
-- Impact: Type inconsistency. Query filters may fail. Serialization issues.
-- Fix approach: Pass raw `uuid4()` objects. Let SQLAlchemy handle conversion.
-
-**TD-029 · `DatabaseConnection._get_connect_args` Returns Invalid Keys**
-- Issue: `poolclass=StaticPool` placed inside `connect_args` — it's an engine-level parameter, not driver-level.
-- Files: `src/infrastructure/database/connection.py` L105–112
-- Impact: Invalid for `psycopg2`/`asyncpg`. May cause initialization errors.
-- Fix approach: Move `poolclass=StaticPool` to `create_engine()` call. Keep driver args only in `connect_args`.
-
-**TD-030 · `ApplicationContainer._get_uptime()` Broken Pattern**
-- Issue: `ApplicationContainer` is `@dataclass`. Setting `self._start_time` in method initializes on first call, not at creation.
-- Files: `src/infrastructure/container.py` L291–298
-- Impact: Uptime calculation inaccurate. First request triggers initialization.
-- Fix approach: Add `_start_time: float = field(default_factory=time.time, init=False)` as dataclass field.
-
-### Dead Dependencies
-
-**TD-031 · Dead Dependencies in `requirements.txt`**
-
-| Package | Status |
-|---------|--------|
-| `dependency-injector>=4.41.0` | Never imported (container is handwritten) |
-| `chromadb>=0.4.0` | Configured in settings but never wired in container |
-| `qdrant-client>=1.7.0` | Configured but never wired |
-| `aiocache>=0.12.0` | Never imported |
-| `langchain>=0.0.300` | Never imported (openai used directly) |
-| `psycopg2-binary>=2.9.0` | Barely used (async app uses asyncpg) |
-
-Impact: Inflates dependencies, increases install time, expands supply chain surface, adds security scanning load.
-
-Fix approach: Remove each dead dependency. Verify no imports or references exist. Test after removal.
-
-**TD-032 · Dead Dependencies in `requirements-production.txt`**
-
-| Package | Status |
-|---------|--------|
-| `anthropic==0.7.6` | Never imported |
-| `aiohttp==3.9.1` | Never imported (httpx used) |
-| `uuid==1.30` | Python has built-in `uuid` module |
-| `sentry-sdk[fastapi]==1.38.0` | Never configured or imported |
-| `gunicorn==21.2.0` | Listed **twice** (lines 3 and 41) |
-| `structlog==23.2.0` | Never imported (stdlib logging used) |
-| `langchain==0.0.335`, `langchain-openai==0.0.2` | Never imported |
-
-Impact: Bloats production image. Unused versions may have security issues. Duplicate gunicorn entry causes confusion.
-
-Fix approach: Remove each unused package. Keep gunicorn once. Test cold start time after cleanup.
+**Critical Gap**: Only integration tests documented; no unit test suite exists. Changes to use cases or repositories lack fast feedback loops.
 
 ---
 
-## P3 — Hygiene & Polish
+### 4. Dependencies Configuration
 
-These reduce code quality, increase cognitive load, or hide issues.
+**files**: `requirements.txt`, `requirements-production.txt`
 
-### Dead Code & Structure
+**Status**: Both present; production file properly constrained.
 
-**TD-033 · `legacy_backup/` Directory Is Dead Code**
-- Path: `legacy_backup/`
-- Contents: `agents/`, `api/`, `services/`, `app/`, `core/`, `models/`
-- Impact: Confuses developers. May be referenced incorrectly. Clutters codebase.
-- Fix approach: Verify nothing in src/ imports from it (use grep). Delete entire directory.
+**Confirmed Packages**:
+- `asyncpg>=0.29.0` ✓ (line 40 in requirements.txt, line 13 in requirements-production.txt)
+- `pytest>=7.4.0` ✓ (line 28 in requirements.txt)
+- `pytest-asyncio>=0.21.0` ✓ (line 29 in requirements.txt)
+- Missing: `pytest-cov` — coverage tool NOT listed in either file
 
-**TD-034 · Empty `src/presentation/api/main.py`**
-- Issue: File exists but is whitespace-only. CLAUDE.md claims it's the "app factory" — but there is no factory.
-- Files: `src/presentation/api/main.py`
-- Impact: Misleading documentation. Unclear purpose.
-- Fix approach: Implement app factory (move `create_app` logic here) or delete and update docs.
+**Production vs Development Split**:
+- `requirements-production.txt` uses pinned versions (e.g., `fastapi>=0.116,<0.117`)
+- `requirements.txt` uses looser constraints (e.g., `fastapi>=0.104.1`)
+- Good separation for reproducible production deploys
 
-**TD-035 · `src/domain/repositories/` Contains No Code**
-- Issue: Empty `__init__.py` only. All actual repository interfaces live in feature-scoped directories.
-- Impact: Unused directory. Violates clean architecture structure expectations.
-- Fix approach: Delete or use as aggregate re-export of all repository interfaces.
+**Dead Dependency**:
+- `dependency-injector>=4.41.0` (line 39 in requirements.txt) — imported in neither source nor test files
+- Container is handwritten intentionally (per CLAUDE.md)
+- Adds ~50KB to install; safe to remove
 
-**TD-036 · `presentation/dependencies.py` Is Mostly Dead Code**
-- Issue: Defines 7 provider functions but only `get_current_user_id` and `get_profile_service` imported (by profile.py). The `get_current_user_id` here is broken (always mock UUID).
-- Files: `src/presentation/dependencies.py`
-- Impact: Confusion about which auth function to use. Dead code suggests unclear design.
-- Fix approach: Delete unused functions. Consolidate with `deps.py`. One auth dependency.
+---
 
-### Type & Validation Issues
+### 5. ORM Models (database/models.py)
 
-**TD-037 · Untyped Request Bodies**
-- Issue: Raw `dict` instead of Pydantic models in several routers.
-- Files: `auth.py` (`payload: dict`), `records.py` (`record: Dict[str, Any]`), `breathing.py` (`session_body: Dict`), `data.py` (`payload: Dict`)
-- Impact: No automatic validation. No OpenAPI schema for request bodies. Harder to debug client errors.
-- Fix approach: Define Pydantic request models for all endpoints. Inherit from DTO models in `src/application/dtos/`.
+**File**: `src/infrastructure/database/models.py`
 
-**TD-038 · Inconsistent Error Response Format**
-- Issue: Error responses vary between endpoints: `{"detail": "..."}`, `{"error": "...", "message": "..."}`, `{"status": "unhealthy", "error": "..."}`, `{"detail": {"message": ..., "code": ..., "suggestion": ...}}`.
-- Files: Multiple routers
-- Impact: Clients cannot parse errors uniformly. Inconsistent API contract.
-- Fix approach: Standardize to `{"error": "code", "message": "human-readable", "details": {}}` everywhere. Add global error formatter in middleware.
+**Total Models**: 13 SQLAlchemy models
 
-### Security & Logging
+**Complete Model List**:
+1. `UserModel` (489 lines) - central entity with extended profile fields
+2. `UserProfileDataModel` - personality, preferences, country, gender
+3. `AgentPersonalityModel` - AI agent context (mood patterns, coping strategies)
+4. `ConversationModel` - chat session container
+5. `MessageModel` - individual messages with intelligent tagging
+6. `EmotionalRecordModel` - emotion logging with semantic tags
+7. `BreathingSessionModel` - breathing exercise tracking
+8. `BreathingPatternModel` - preset and custom breathing patterns
+9. `CustomEmotionModel` - user-defined emotions
+10. `DailySuggestionModel` - LLM-generated recommendations
+11. `DomainEventModel` - domain event persistence for event sourcing
+12. `UserProfileModel` - aggregated tag data and insights
+13. `TagSemanticModel` - tag relationships and synonyms
 
-**TD-039 · No Token Invalidation / Logout Is a No-Op**
-- Issue: Logout endpoint is `# TODO: Implement token invalidation` + returns success message without doing anything.
-- Files: `src/presentation/api/routers/auth.py` L113
-- Impact: Tokens valid forever. User cannot actually log out. Sessions impossible to revoke.
-- Fix approach: Implement Redis-backed token blacklist. Check blacklist before each request. Set TTL to match token expiry.
+**Key Observations**:
+- Well-indexed with GIN indexes for JSONB columns (intelligent tagging search)
+- Cascade deletes properly configured for relationships
+- Multiple JSONB columns for semantic data storage
+- No enum types used (string columns instead)
+- Timestamps with timezone awareness implemented consistently
 
-**TD-040 · `CORS_ORIGINS=["*"]` in All Environments**
-- Issue: CORS allows all origins. Production should be restrictive.
-- Files: `settings.py` L78, `docker-compose.yml` L44
-- Impact: Any website can make requests to API. Credentials leakage. Not production-safe.
-- Fix approach: Set explicit origins for production (only emotionai-app domain). Keep `["*"]` for dev. Make configurable via env.
+**Model Size**: 489 lines total — well-organized but some legacy patterns remain (e.g., `agent_personality_data` and `user_profile_data` JSON columns with deprecation comments).
 
-**TD-041 · `uvicorn.run()` Binds to `0.0.0.0`**
-- Issue: Documentation says "bound to `127.0.0.1`" but code binds to `0.0.0.0`, exposing API on all interfaces.
-- Files: `main.py` L203
-- Impact: API reachable from outside container. Unintended exposure in dev. Should be proxied by Nginx in production.
-- Fix approach: Bind to `127.0.0.1` in production. Make `host` configurable via settings. Validate in tests.
+---
 
-**TD-043 · Verbose Debug Logging of Response Content**
-- Issue: Full therapy response objects logged at `INFO` level, exposing sensitive patient data.
-- Files: `src/presentation/api/routers/chat.py` L78–87
-- Impact: Mental health data in logs. HIPAA/privacy violation if logs are breached. Retention issue.
-- Fix approach: Move to `DEBUG` level only. Redact sensitive fields (emotion, content, crisis_detected). Log only metadata.
+### 6. Service Implementation Status
 
-**TD-044 · Error Messages Leak Internal State**
-- Issue: Exception details returned to client: `{"exception_type": type(e).__name__, "exception_message": str(e)}`.
-- Files: `src/presentation/api/routers/chat.py` L135–139
-- Impact: Stack traces visible to attacker. Internal implementation leaked. Aids reconnaissance.
-- Fix approach: Log full details server-side. Return generic error code to client. Use error code lookup instead of raw exception.
+**Location**: `src/infrastructure/services/`
 
-### Environment & Compatibility
+**Real Implementations**:
+- `LangChainAgentService` (331 lines) - fully functional with memory and context
+- `OpenAITaggingService` (417 lines) - semantic tagging with dual prompts
+- `OpenAILLMService` (210 lines) - OpenAI integration
+- `AnthropicLLMService` - Anthropic Claude integration
+- `RedisEventBus` - event publication and subscription
+- `ProfileService` (455 lines) - user profile management
 
-**TD-042 · PostgreSQL 13 in Docker vs 16 in Production**
-- Issue: Dev runs `postgres:13`, production runs PostgreSQL 16 (AWS RDS).
-- Files: `docker-compose.yml` (`postgres:13`), `aws_infra_terraformer/rds.tf` (PostgreSQL 16)
-- Impact: Feature compatibility may differ. SQL dialect changes. Development surprises in production.
-- Fix approach: Upgrade docker-compose to `postgres:16` to match production.
+**Mock/Stub Implementations**:
+- `MockSimilaritySearchService` (118 lines) - returns empty lists, basic Jaccard similarity only
+- `MockUserKnowledgeService` (103 lines) - returns None or dummy data
 
-### Unused Code
+**Concerning Pattern**: Mock services are fully integrated into production container (lines 156-157 in `container.py`). They don't crash but provide no semantic memory capabilities.
 
-**TD-045 · Unused Imports and Dead Code**
-- Issue: Scattered across files.
-- Files: `records.py` (`import hashlib`), `main.py` (`import asyncio`), `chat.py` (`HTTPBearer` defined but unused)
-- Impact: Clutter. Confuses code readers. May mask actual unused functionality.
-- Fix approach: Automated linting with `ruff` or `flake8`. Remove unused imports. Use in pre-commit hook.
+---
 
-### Mock Services
+### 7. Tech Debt Summary from TECH_DEBT.md
 
-**TD-046 · Mock Services Are Stubs with No Logic**
-- Issue: `ISimilaritySearchService` and `IUserKnowledgeService` always return empty/dummy results. Vector DB configured in settings but never wired.
+**P0 — Blocks correctness or reliability**:
+
+**P0-001: No unit test suite**
+- Files: Only `test_integration.py` and `test_database_integrations.py` exist (not committed/found)
+- Problem: Changes to use cases/repositories have no fast feedback
+- Impact: Regressions in business logic undetected until integration runs
+- Fix approach: Add pytest unit tests per use case, mock `ApplicationContainer`
+
+**P1 — Code quality and maintainability**:
+
+**P1-001: Duplicate agent_chat_use_case.py**
 - Files:
-  - `src/infrastructure/services/mock_similarity_search_service.py`
-  - `src/infrastructure/services/mock_user_knowledge_service.py`
-- Impact: Agent cannot perform semantic memory retrieval. Personalization broken.
-- Fix approach: Implement ChromaDB or Qdrant integration. Wire in `container.py`. Test memory retrieval end-to-end.
+  - `src/application/use_cases/agent_chat_use_case.py` ← delete this (STALE)
+  - `src/application/chat/use_cases/agent_chat_use_case.py` ← canonical location
+- Problem: Two copies means changes must be applied twice or drift silently
+- Impact: Low immediate risk but maintenance hazard
+- Fix approach: Verify identical, update imports, delete root-level copy
 
-### Alembic & Migrations
+**P1-002: Duplicate tagging service interface**
+- Files:
+  - `src/application/services/tagging_service.py` (root-level)
+  - `src/application/tagging/services/tagging_service.py` (feature-scoped)
+  - `src/infrastructure/services/openai_tagging_service.py` (using root-level import)
+  - `src/infrastructure/tagging/services/openai_tagging_service.py` (using feature-scoped import, 357 lines)
+- Problem: Same interface in two locations; implementations diverging
+- Impact: Confusion about canonical location; potential import errors
+- Fix approach: Consolidate to `src/application/tagging/services/`, update all imports
 
-**TD-047 · Single Monolithic Alembic Migration**
-- Issue: All schema changes in `migrations/versions/001_initial_schema.py`. Editing it breaks any DB that has applied it.
-- Files: `migrations/versions/001_initial_schema.py`
-- Impact: Impossible to fix past migrations. Cannot roll back changes safely. Blocks team from iterating on schema.
-- Fix approach: **Never touch `001_`**. Every future schema change: `alembic revision --autogenerate -m "describe_change"`. Document this rule.
+**P1-003: Unused dependency-injector package**
+- Files: `requirements.txt`, `requirements-production.txt`
+- Problem: Package declared but never imported; dead dependency
+- Impact: Longer install times, larger attack surface
+- Fix approach: Remove `dependency-injector>=4.41.0` from both files
 
-### Additional Observations
+**P2 — Missing functionality**:
 
-**TD-048 · No Request Size Limits**
-- Issue: No middleware limits request body size.
-- Impact: Malicious clients can send arbitrarily large payloads (megabytes). DoS vector. Memory exhaustion.
-- Fix approach: Add body size limit middleware. Set reasonable max (e.g., 10MB). Enforce via Nginx config as well.
+**P2-001: Mock services are stubs**
+- Files: `src/infrastructure/services/mock_*.py`
+- Problem: `ISimilaritySearchService` and `IUserKnowledgeService` always return empty results
+- Impact: Agent cannot perform semantic memory retrieval; all recommendations are generic
+- Fix approach: Implement ChromaDB or Qdrant integration; wire in container
 
-**TD-049 · Missing `__all__` Exports in `__init__.py`**
-- Issue: Most `__init__.py` files are empty.
-- Impact: IDE auto-import doesn't work well. `from package import *` doesn't work. Unclear public API.
-- Fix approach: Add `__all__` lists to key `__init__.py` files, especially in domain and application layers.
+**P2-002: Single monolithic migration**
+- File: `migrations/versions/001_initial_schema.py`
+- Problem: All schema changes accumulated in one file; future edits break history
+- Impact: Schema safety degradation; migration chaining becomes fragile
+- Fix approach: Lock `001_` as immutable; every future change uses `alembic revision --autogenerate -m "..."`
 
 ---
 
-## Cross-Cutting Issues (Shared with App)
+### 8. Docker Compose Configuration
 
-**XC-001 · Sync DELETE not implemented** — App deletes reappear after sync. API has no DELETE endpoints (TD-023).
+**File**: `docker-compose.yml`
 
-**XC-002 · No JWT token refresh** — Silent 401s after 30-minute token expiry. No refresh token flow.
+**Port Exposure**:
+- PostgreSQL: `5432:5432` (exposed, correct for local testing)
+- Redis: `6379:6379` (exposed, correct for local testing)
+- API: `8000:8000` (exposed, correct for local testing)
 
-**XC-003 · API contract not typed** — No OpenAPI client generation. Dart client manually maintained, prone to drift.
+**Health Checks**:
+- PostgreSQL: 10-second timeout with 5s interval and 10 retries ✓
+- Redis: 3-second timeout with 5s interval and 5 retries ✓
+- API waits for both health checks before starting ✓
 
-**XC-004 · Physical device IP hardcoded** — Flutter app has hardcoded IP in `lib/config/api_config.dart`.
+**Concern**:
+- Line 40-42: `OPENAI_API_KEY` environment placeholder present but empty
+  - Will cause API to fail at startup without `.env` override
+  - No validation at startup to fail fast with clear error message
+  - Fix: Remove placeholder; validate presence in `settings.validate_required_settings()`
+
+**Good Practice**:
+- Network isolation via `emotionai-network` bridge
+- Persistent volume for Postgres data
+- `.env` file support (`env_file: - .env`)
 
 ---
 
-## Attack Priority
+### 9. Test Configuration
 
-### Sprint 1 — Security (P0) — Estimated 3 sprints
-1. **TD-002**: Implement password hashing in auth flow
-2. **TD-003**: Replace auth bypass with proper JWT validation
-3. **TD-004**: Make SECRET_KEY required in all environments
-4. **TD-005**: Consolidate `get_current_user_id` implementations
-5. **TD-007**: Fix blocking sync call in duplicate check
-6. **TD-008**: Switch OpenAI tagging to AsyncOpenAI
+**Status**: No pytest configuration files found at project root.
 
-### Sprint 2 — Correctness (P0/P1) — Estimated 2 sprints
-1. **TD-006**: Implement repository methods and refactor routers to use use cases
-2. **TD-020**: Move health check user creation to startup
-3. **TD-021**: Replace `datetime.utcnow()` with `datetime.now(timezone.utc)`
+**Missing Files**:
+- `pytest.ini` — not found
+- `conftest.py` — not found
+- `pyproject.toml` with `[tool.pytest]` — not found
 
-### Sprint 3 — Architecture (P1) — Estimated 2 sprints
-1. **TD-009**: Refactor routers to use use cases instead of direct DB access
-2. **TD-010, TD-011, TD-012, TD-013**: Consolidate duplicate code
-3. **TD-014**: Remove shadowed `get_container` definitions
-4. **TD-015, TD-016, TD-017**: Implement broken abstractions (event bus, conversation history, LLM factory)
-5. **TD-018**: Fix router prefix strategy
+**Implications**:
+- Default pytest behavior (collect from `tests/` directory)
+- No custom pytest plugins or fixtures available
+- No shared test setup/teardown
+- Coverage configuration must be passed via CLI flags
 
-### Sprint 4 — Features (P2) — Estimated 2 sprints
-1. **TD-022**: Add pagination to list endpoints
-2. **TD-023, TD-024**: Add DELETE and UPDATE endpoints
-3. **TD-019**: Track token usage in main LLM service
-4. **TD-025**: Make token limit configurable
+**Recommendation**: Create `pyproject.toml` with pytest config:
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers --tb=short"
+markers = [
+    "integration: integration tests",
+    "unit: unit tests",
+    "async: async tests"
+]
+```
 
-### Sprint 5 — Scale & Performance (P2) — Estimated 1 sprint
-1. **TD-026**: Switch rate limiting to Redis
-2. **TD-031, TD-032**: Remove dead dependencies
-3. **TD-027, TD-028, TD-029, TD-030**: Fix database quirks
+---
 
-### Sprint 6 — Polish (P3) — Estimated 1 sprint
-1. **TD-033, TD-034, TD-035, TD-036**: Clean up dead code
-2. **TD-037, TD-038**: Add Pydantic models, standardize error responses
-3. **TD-039, TD-040, TD-041**: Fix logout, CORS, host binding
-4. **TD-042**: Upgrade docker-compose Postgres to 16
-5. **TD-043, TD-044**: Fix logging & error messages
-6. **TD-045**: Remove unused imports
-7. **TD-046**: Implement vector DB integration
-8. **TD-047**: Document Alembic migration policy
-9. **TD-048, TD-049**: Add request size limits, `__all__` exports
+### 10. Use Cases Inventory
+
+**Location**: `src/application/` and feature-scoped subdirectories
+
+**Identified Use Cases**:
+1. `GetMonthlyUsageUseCase` (14 lines) — **SIMPLEST**
+   - File: `src/application/usage/use_cases/get_monthly_usage_use_case.py`
+   - Depends: `ITokenUsageRepository` only
+   - Method: `execute(user_id: UUID, year, month) -> int`
+   - Purpose: Fetch user's token usage for a given month
+   - Ideal candidate for first unit test (minimal dependencies)
+
+2. `AgentChatUseCase` (nested location)
+   - File: `src/application/chat/use_cases/agent_chat_use_case.py`
+   - Depends: 8+ services (complex)
+   - Purpose: Full chat pipeline with memory, tagging, crisis detection
+
+---
+
+## Critical Issues
+
+### Issue 1: Semantic Memory Services Are Non-Functional
+
+**Category**: Missing Functionality (P2)
+
+**Severity**: HIGH
+
+**Files**:
+- `src/infrastructure/services/mock_similarity_search_service.py`
+- `src/infrastructure/services/mock_user_knowledge_service.py`
+- `src/infrastructure/container.py` (lines 156-157)
+
+**Problem**:
+- `ISimilaritySearchService` and `IUserKnowledgeService` are critical for personalized recommendations
+- Current mock implementations return empty lists or dummy data
+- Agent cannot retrieve past emotional patterns or effective coping strategies
+- ChromaDB and Qdrant are configured in settings but never initialized
+- Vector DB path (`settings.chromadb_path`) exists but unused
+
+**Impact**:
+- All user recommendations are generic (not learned from history)
+- Agent lacks access to user's past conversations and emotional patterns
+- Worse user experience; reduced therapeutic effectiveness
+- Violates core product promise of personalized mental health support
+
+**Fix Approach**:
+1. Implement `ChromaDbSimilaritySearchService` using `chromadb` library (already in requirements)
+2. Implement `RealUserKnowledgeService` using tag aggregation from `UserProfileModel`
+3. Wire both services in `container.py` with conditional logic based on feature flags
+4. Add integration tests for vector retrieval accuracy
+
+**Effort**: MEDIUM (implementation + testing)
+
+---
+
+### Issue 2: Repository Implementations Are Empty Stubs
+
+**Category**: Missing Functionality (P2)
+
+**Severity**: MEDIUM-HIGH
+
+**Files Affected**:
+- `src/infrastructure/analytics/repositories/sqlalchemy_analytics_repository.py` - returns None
+- `src/infrastructure/records/repositories/sqlalchemy_emotional_repository.py` - multiple TODO stubs
+- `src/infrastructure/breathing/repositories/sqlalchemy_breathing_repository.py` - multiple TODO stubs
+- `src/infrastructure/events/repositories/sqlalchemy_event_repository.py` - multiple TODO stubs
+
+**Problem**:
+- Many repository methods contain only TODO comments with no implementation
+- Methods return None or pass without DB operations
+- Violates Liskov Substitution Principle — interfaces not honored
+- Code appears to work but silently drops data
+
+**Examples**:
+```python
+# From sqlalchemy_emotional_repository.py
+async def get_emotional_records(self, user_id: UUID):
+    # TODO: Implement actual database query
+    return []
+
+async def save_emotional_record(self, user_id: UUID, ...):
+    # TODO: Implement actual database save
+    return None
+```
+
+**Impact**:
+- Emotional records logged but not persisted
+- Analytics interactions discarded
+- Event sourcing broken (domain events lost)
+- Silent data loss during normal operation
+
+**Fix Approach**:
+1. Audit all repository methods for completeness
+2. Implement missing database queries using SQLAlchemy session
+3. Add integration tests that verify persistence
+4. Use type hints to catch missing implementations at check time
+
+**Effort**: MEDIUM (systematic implementation across 4 repos)
+
+---
+
+### Issue 3: No Unit Test Suite
+
+**Category**: Correctness (P0)
+
+**Severity**: HIGH
+
+**Files**:
+- Test directory exists but no test files found
+- No integration tests discovered in project tree
+- No conftest or test fixtures
+
+**Problem**:
+- Changes to business logic have zero fast feedback
+- Regressions only caught at integration test time (if tests are run)
+- No TDD workflow possible
+- Harder to refactor with confidence
+
+**Impact**:
+- High defect escape rate
+- Slower development velocity
+- Lower code confidence
+- Difficult onboarding for new developers
+
+**Current Test Plan**:
+TECH_DEBT.md recommends starting with:
+- Unit tests for `GetMonthlyUsageUseCase` (simplest: 14 lines, 1 dependency)
+- Unit tests for `AgentChatUseCase` (complex: 8+ dependencies, requires mocking)
+
+**Fix Approach**:
+1. Create `conftest.py` with reusable fixtures
+2. Start with `tests/unit/use_cases/test_get_monthly_usage_use_case.py`
+3. Mock `ITokenUsageRepository` with simple in-memory implementation
+4. Add tests for happy path + error cases
+5. Gradually expand to other use cases using same pattern
+6. Add `pytest-cov` to requirements and enforce coverage targets
+
+**First Test Example**:
+```python
+@pytest.mark.asyncio
+async def test_get_monthly_usage_with_valid_month(mock_token_usage_repo):
+    use_case = GetMonthlyUsageUseCase(mock_token_usage_repo)
+    mock_token_usage_repo.get_monthly_usage.return_value = 42
+
+    result = await use_case.execute(user_id=..., year=2026, month=3)
+
+    assert result == 42
+```
+
+**Effort**: HIGH (systematic coverage across all use cases/repos)
+
+---
+
+### Issue 4: Duplicate Code (Services and Use Cases)
+
+**Category**: Code Quality (P1)
+
+**Severity**: MEDIUM
+
+**Files**:
+- `src/application/use_cases/agent_chat_use_case.py` (STALE)
+- `src/application/chat/use_cases/agent_chat_use_case.py` (CANONICAL)
+- `src/application/services/tagging_service.py` (ROOT-LEVEL)
+- `src/application/tagging/services/tagging_service.py` (FEATURE-SCOPED)
+- `src/infrastructure/services/openai_tagging_service.py` (OLD LOCATION)
+- `src/infrastructure/tagging/services/openai_tagging_service.py` (NEW LOCATION)
+
+**Problem**:
+- Duplication increases maintenance burden
+- Changes must be applied in multiple locations or code drifts
+- Imports from wrong location lead to subtle bugs
+- Unclear which is canonical version
+
+**Impact**:
+- Maintenance errors accumulate
+- Confusing for new developers
+- Potential for inconsistent behavior
+
+**Fix Approach**:
+1. Identify canonical location for each duplicated artifact
+2. Verify both versions are identical
+3. Update all imports to canonical location
+4. Delete stale copies
+5. Run grep to ensure no dangling imports
+
+**Duplicates to Fix**:
+- `agent_chat_use_case.py`: Keep `src/application/chat/use_cases/`, delete root-level
+- `tagging_service.py`: Keep `src/application/tagging/services/`, delete root-level
+- `openai_tagging_service.py`: Keep `src/infrastructure/tagging/services/`, delete root-level duplicate
+
+**Effort**: LOW (cleanup task)
+
+---
+
+## Performance Bottlenecks
+
+### Issue 5: Potential Blocking Calls in Async Handlers
+
+**Category**: Performance
+
+**Severity**: MEDIUM
+
+**Concern**: No blocking sync calls detected in current analysis, but review the following high-traffic handlers:
+
+**Files to Audit**:
+- `src/presentation/api/routers/chat.py` (269 lines)
+- `src/presentation/api/routers/records.py` (403 lines)
+- `src/infrastructure/services/openai_tagging_service.py` (417 lines)
+- `src/infrastructure/services/langchain_agent_service.py` (331 lines)
+
+**Recommendation**: Profile with `asyncio-monitor` or `py-spy` before/after load testing to verify no event loop blocking.
+
+---
+
+### Issue 6: Vector Database Integration Missing
+
+**Category**: Performance / Scalability
+
+**Severity**: MEDIUM
+
+**Files**:
+- `src/infrastructure/config/settings.py` - chromadb_path and qdrant_url configured but unused
+- `src/infrastructure/services/mock_similarity_search_service.py` - returns empty results
+
+**Problem**:
+- Semantic search for similar emotional patterns disabled
+- Every user request starts from zero context
+- No learned optimization from historical interactions
+
+**Impact**:
+- O(n) recommendation logic instead of O(1) vector lookup
+- Degraded response time under load
+- Higher LLM API cost (more tokens for context building)
+
+**Scaling Plan**:
+1. Implement ChromaDB service
+2. Embed user messages and emotional records into vectors
+3. Index vectors with metadata (user_id, timestamp, emotion)
+4. Query at recommendation time: `find_similar(current_emotion) -> List[Match]`
+
+**Effort**: MEDIUM-LONG (vector pipeline implementation)
+
+---
+
+## Security Considerations
+
+### Issue 7: No Secrets Validation at Startup
+
+**Category**: Security (Configuration)
+
+**Severity**: LOW
+
+**Files**:
+- `docker-compose.yml` (line 40: empty OPENAI_API_KEY)
+- `src/infrastructure/config/settings.py` (no startup validation)
+
+**Problem**:
+- API starts without required secrets
+- User sees confusing "API key invalid" errors from OpenAI, not clear startup failure
+- No fast-fail on misconfiguration
+
+**Impact**:
+- Operational confusion
+- Difficult debugging in production
+- Silent degradation if env vars partially configured
+
+**Fix Approach**:
+```python
+# In settings.py or main.py
+def validate_required_settings(settings: Settings):
+    required = [
+        ('OPENAI_API_KEY', settings.openai_api_key),
+        ('ANTHROPIC_API_KEY', settings.anthropic_api_key),  # at least one
+        ('DATABASE_URL', settings.database_url),
+        ('REDIS_URL', settings.redis_url),
+        ('SECRET_KEY', settings.secret_key),
+    ]
+    missing = [k for k, v in required if not v]
+    if missing:
+        raise RuntimeError(f"Missing required env vars: {missing}")
+```
+
+**Effort**: LOW (validation only)
+
+---
+
+### Issue 8: Mental Health Data Sensitivity
+
+**Category**: Security / Compliance
+
+**Severity**: HIGH (business critical)
+
+**Files**:
+- `src/infrastructure/database/models.py` - stores sensitive emotional records
+- `src/infrastructure/services/openai_tagging_service.py` - sends data to OpenAI
+- `src/presentation/api/routers/chat.py` - handles chat messages
+
+**Concerns**:
+- HIPAA/GDPR compliance not explicitly addressed in code
+- Emotional records contain mental health history (high sensitivity)
+- Crisis detection keywords hardcoded in tagging service (line 25-28)
+- User data sent to OpenAI APIs (third-party processing)
+
+**Current Mitigations**:
+- Data is encrypted at rest in RDS (AWS default)
+- TLS for transit (Nginx)
+- JWT authentication required
+- No PII exported in logs
+
+**Recommendations**:
+1. Add data classification markers in code comments
+2. Document API data residency (OpenAI processes in US)
+3. Implement automatic deletion of old records per data retention policy
+4. Add audit logging for sensitive data access
+5. Implement row-level security for multi-tenant access
+6. Consider tokenization of emotional content before tagging
+
+**Effort**: MEDIUM (policy + implementation)
+
+---
+
+## Fragile Areas
+
+### Issue 9: LangChain Agent Service Complexity
+
+**Category**: Maintainability
+
+**Severity**: MEDIUM
+
+**Files**:
+- `src/infrastructure/services/langchain_agent_service.py` (331 lines)
+
+**Concerns**:
+- Fallback conversation ID hardcoded as string (line 126): `f"fallback_{user_id}_{agent_type}"`
+- Crisis response protocol (line 86) has TODO with no implementation
+- Context building is fragile if repositories return None
+- Error handling swallows exceptions and returns fallback responses
+
+**Fragile Pattern** (line 91-94):
+```python
+except Exception as e:
+    logger.error(f"Error in send_message: {e}", exc_info=True)
+    # Return fallback response
+    return await self._create_fallback_response(...)
+```
+
+Silent failures degrade UX without alerting developers to actual problems.
+
+**Safe Modification Guidance**:
+1. Add structured logging with request IDs for tracing
+2. Distinguish recoverable errors (transient) from failures (data integrity)
+3. For data integrity failures, propagate exceptions; for transient, use fallbacks
+4. Add test coverage for all error paths
+
+---
+
+## Test Coverage Gaps
+
+### Critical Untested Areas
+
+**Severity**: HIGH
+
+| Area | What's Not Tested | Files | Risk |
+|------|-------------------|-------|------|
+| **Semantic Tagging** | End-to-end tag extraction accuracy | `openai_tagging_service.py` | Degraded personalization |
+| **Emotional Records Persistence** | CRUD operations on emotional records | `sqlalchemy_emotional_repository.py` | Silent data loss |
+| **Crisis Detection** | Detection accuracy of mental health urgency | `langchain_agent_service.py`, `openai_tagging_service.py` | Missed escalations |
+| **Breathing Sessions** | Session tracking and analytics | `sqlalchemy_breathing_repository.py` | Broken user experience |
+| **Token Budget Enforcement** | Monthly usage limits | `get_monthly_usage_use_case.py` | Unexpected API costs |
+| **Domain Events** | Event persistence and processing | `sqlalchemy_event_repository.py` | Lost state transitions |
+
+**Priority Order for Test Coverage**:
+1. `GetMonthlyUsageUseCase` (simplest, 14 lines)
+2. Repository CRUD operations (critical for data integrity)
+3. Crisis detection accuracy (high business impact)
+4. Semantic tagging (personalization foundation)
+
+---
+
+## Scaling Limits
+
+### Issue 10: Vector Database Not Implemented
+
+**Current Capacity**: N/A (feature disabled)
+
+**Scaling Concern**:
+- Without vector search, recommendation latency grows O(n) with user history
+- At 10K users with 100 records each = 1M+ emotional records to scan
+- LLM context window filled with historical data search
+
+**Migration Path**:
+1. Phase 1: Implement ChromaDB (in-memory, suitable for < 100K users)
+2. Phase 2: Migrate to Qdrant (production-grade, 1M+ embeddings)
+3. Phase 3: Add caching layer (Redis) for top-k similar users
+
+---
+
+## Dependencies at Risk
+
+### Issue 11: dependency-injector Package Unused
+
+**Package**: `dependency-injector>=4.41.0`
+
+**Risk**: Supply chain / install time
+
+**Current Status**: Listed in `requirements.txt` (line 39) but never imported
+
+**Impact**:
+- Adds dependency closure to attack surface
+- Increases `pip install` time by ~100ms
+- No functional benefit (container is handwritten)
+
+**Fix**: Remove from both requirements files
+
+**Effort**: TRIVIAL
+
+---
+
+## Known TODOs in Code
+
+All `TODO` comments found in codebase:
+
+| File | Line | TODO |
+|------|------|------|
+| `src/presentation/api/routers/auth.py` | (line ~) | Implement token invalidation |
+| `src/infrastructure/records/repositories/sqlalchemy_emotional_repository.py` | (multiple) | Implement actual database operations |
+| `src/infrastructure/breathing/repositories/sqlalchemy_breathing_repository.py` | (multiple) | Implement actual database operations |
+| `src/infrastructure/services/langchain_agent_service.py` | 86 | Implement crisis response protocol |
+| `src/infrastructure/container.py` | 155 | Initialize mock services (replace with real implementations) |
+| `src/infrastructure/analytics/repositories/sqlalchemy_analytics_repository.py` | (multiple) | Persist analytics interactions |
+| `src/infrastructure/events/repositories/sqlalchemy_event_repository.py` | (multiple) | Persist/query domain events |
+
+**Collective Impact**: 15+ incomplete features. Most are P2 (missing functionality); crisis response is P0 (correctness).
+
+---
+
+## Summary: Risk Ranking
+
+| Risk | Severity | Category | Fix Effort | Impact |
+|------|----------|----------|------------|--------|
+| No unit test suite | P0 | Testing | HIGH | High defect escape rate |
+| Mock similarity/knowledge services | P2 | Functionality | MEDIUM | No personalization |
+| Empty repository methods | P2 | Functionality | MEDIUM | Silent data loss |
+| Duplicate code (tagging, use cases) | P1 | Maintainability | LOW | Maintenance drift |
+| No startup validation | LOW | Operations | LOW | Confusing errors |
+| Crisis detection unimplemented | P0 | Correctness | MEDIUM | Missed escalations |
+| Vector DB disabled | P2 | Performance | MEDIUM | O(n) recommendation search |
+| Mental health data sensitivity | HIGH | Security/Compliance | MEDIUM | Regulatory risk |
+
+**Recommended First Phase**:
+1. Implement unit tests for `GetMonthlyUsageUseCase`
+2. Fix empty repository stubs (critical path first)
+3. Consolidate duplicate code
+4. Implement real similarity search service
 
 ---
 

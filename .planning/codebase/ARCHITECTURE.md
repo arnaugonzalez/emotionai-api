@@ -4,179 +4,239 @@
 
 ## Pattern Overview
 
-**Overall:** Clean Architecture (4-layer) with Dependency Injection (DI) Composition Root
+**Overall:** Clean Architecture with explicit layer separation (Domain → Application → Infrastructure → Presentation)
 
 **Key Characteristics:**
-- Strict separation of concerns across domain, application, infrastructure, and presentation layers
-- Dependency rule: Domain ← Application ← Infrastructure ← Presentation (never reversed)
-- All business logic isolated in domain layer (no framework imports permitted)
-- Service interfaces defined in application layer; implementations in infrastructure
-- Centralized composition root via `ApplicationContainer` for wiring all dependencies
-- Async-first design with asyncpg for PostgreSQL and async event bus via Redis
+- Strict dependency direction: business logic (domain) never imports framework code
+- Composition root pattern via `ApplicationContainer` for centralized DI wiring
+- Service-oriented application layer with use cases orchestrating repositories and services
+- SQLAlchemy ORM for persistence with explicit mapping to domain entities
+- LangChain agent-based AI integration for therapeutic conversation
+- Event-driven architecture via Redis pub/sub for async operations
+
+---
 
 ## Layers
 
 **Domain Layer:**
-- Purpose: Pure business logic, entities, value objects, and repository interfaces
+- Purpose: Pure business logic and entities with no framework imports
 - Location: `src/domain/`
-- Contains: User entity, chat entities, emotional records, breathing sessions, value objects (AgentPersonality, UserProfile), domain events
-- Depends on: Nothing (zero external dependencies)
-- Used by: Application layer only
-- Key files: `src/domain/entities/user.py`, `src/domain/value_objects/`, `src/domain/{chat,breathing,records,analytics,events,users,usage}/interfaces.py`
+- Contains: entities (`User`, conversation state), value objects (`AgentPersonality`, `UserProfile`), interfaces (repository contracts), domain events
+- Depends on: Nothing (no external dependencies)
+- Used by: Application layer for use case implementation
 
 **Application Layer:**
-- Purpose: Use cases, service interfaces, DTOs, and orchestration of domain logic
+- Purpose: Business rules orchestration, use cases, DTOs, service interfaces
 - Location: `src/application/`
-- Contains: Use cases (AgentChatUseCase, GetMonthlyUsageUseCase), service interfaces (IAgentService, IEventBus, ITaggingService), DTOs for request/response contracts, exception hierarchy
+- Contains: use cases (`AgentChatUseCase`, `GetMonthlyUsageUseCase`), service interfaces (`IAgentService`, `ITaggingService`), DTOs for API contracts, exception definitions
 - Depends on: Domain layer only
-- Used by: Infrastructure and presentation layers
-- Key files: `src/application/chat/use_cases/agent_chat_use_case.py`, `src/application/dtos/chat_dtos.py`, `src/application/exceptions.py`, `src/application/services/{agent_service.py, event_bus.py, tagging_service.py}`
+- Used by: Infrastructure (implementations) and Presentation (dependency injection)
 
 **Infrastructure Layer:**
-- Purpose: Concrete implementations of interfaces: SQLAlchemy repositories, external service clients, Redis bus, LangChain agent service
+- Purpose: Technical implementation, external integrations, data persistence
 - Location: `src/infrastructure/`
-- Contains: SQLAlchemy models and repositories (user, conversation, emotional records, breathing, analytics, events, usage), LangChain agent service, OpenAI/Anthropic LLM services, Redis event bus, profile service, database connection pool, configuration loading
-- Depends on: Domain and application layers
-- Used by: Presentation layer (via container)
-- Key files: `src/infrastructure/container.py` (DI wiring), `src/infrastructure/database/models.py`, `src/infrastructure/repositories/`, `src/infrastructure/services/{langchain_agent_service.py, openai_tagging_service.py, redis_event_bus.py}`
+- Contains: SQLAlchemy repositories, LangChain agent service, OpenAI/Anthropic LLM wrappers, Redis event bus, database connection pool, configuration
+- Depends on: Application layer (implements interfaces), Domain layer (maps to/from entities)
+- Used by: Presentation layer via injected services from container
 
 **Presentation Layer:**
-- Purpose: HTTP API endpoints, middleware, validators, WebSocket handlers
-- Location: `src/presentation/api/`
-- Contains: FastAPI routers (11 routers: auth, chat, breathing, records, usage, profile, data, health, suggestions, ws, dev_seed), middleware (error handling, logging, rate limiting), request validators, JWT authentication, WebSocket connection management
-- Depends on: Application and infrastructure layers
-- Used by: FastAPI application entry point
-- Key files: `src/presentation/api/routers/`, `src/presentation/api/middleware/`, `src/presentation/api/main.py` (app factory)
+- Purpose: HTTP routing, request/response handling, middleware, authentication
+- Location: `src/presentation/`
+- Contains: FastAPI routers (10 endpoints), JWT authentication logic, middleware (logging, error handling, rate limiting), request validators
+- Depends on: Application layer (uses services), Infrastructure layer (uses container)
+- Used by: FastAPI application in `main.py`
+
+---
 
 ## Data Flow
 
-**Chat Message Flow (Core Use Case):**
+**Typical Request Flow (Chat Message Example):**
 
-1. **Request Entry** → `POST /v1/api/chat` (FastAPI router: `src/presentation/api/routers/chat.py`)
-2. **Authentication** → JWT token validated via `get_current_user_id` dependency (`src/presentation/api/routers/deps.py`)
-3. **Dependency Injection** → Container retrieved via `get_container` dependency (contains all wired services)
-4. **Request Validation** → `ChatApiRequest` validated against Pydantic schema
-5. **Use Case Invocation** → `AgentChatUseCase.execute()` called with user_id, agent_type, message
-6. **Domain Logic**:
-   - Retrieve user via `user_repository.get_by_id()` (SQLAlchemy repository)
-   - Fetch user profile and agent preferences from database
-7. **External LLM Call** → `agent_service.send_message()` (LangChain + OpenAI/Anthropic)
-   - User history retrieved from `conversation_repository`
-   - AI generates response using user context and conversation memory
-8. **Semantic Tagging** → `tagging_service.tag_response()` (GPT-4o-mini) [async best-effort]
-   - Response tagged with emotion, intent, severity
-   - Token usage logged to `token_usage_repo`
-9. **Suggestion Persistence** → If suggestions included, upsert to `DailySuggestionModel` (best-effort)
-10. **Event Publishing** → Domain events queued to Redis via `event_bus` (async)
-11. **Response Serialization** → DTO converted to `ChatApiResponse`
-12. **HTTP Response** → 200 OK with `{ message, agent_type, suggestions, timestamp }`
+1. **Entry**: `POST /v1/api/chat` received by FastAPI router at `src/presentation/api/routers/chat.py`
+2. **Auth**: Middleware and `get_current_user_id()` from `src/presentation/dependencies.py` extracts/validates JWT token
+3. **Validation**: Request payload validated via Pydantic `ChatApiRequest` model
+4. **Container Access**: Router retrieves `ApplicationContainer` from `app.state.container` via dependency injection
+5. **Use Case Execution**: Router calls `container.agent_chat_use_case.execute(user_id, agent_type, message, context)`
+6. **Repository Access**: Use case in `src/application/chat/use_cases/agent_chat_use_case.py` queries repositories:
+   - `user_repository.get_by_id(user_id)` → fetch user entity
+   - `conversation_repository.save()` → persist conversation
+   - `emotional_repository.save()` → track emotional state
+7. **Service Orchestration**: Use case calls:
+   - `agent_service.send_message()` → LangChain agent with GPT-4 prompt
+   - `tagging_service.tag_response()` → semantic tagging via GPT-4o-mini
+   - `user_knowledge_service.update_profile()` → mock (stub) profile update
+8. **Response Mapping**: Use case returns domain response object
+9. **DTO Conversion**: Router converts domain response to API response (`ChatApiResponse`)
+10. **Return**: FastAPI serializes response to JSON, status 200
 
 **State Management:**
-- **User State**: Stored in PostgreSQL, retrieved per-request via `IUserRepository`
-- **Conversation History**: Stored in `conversations` table, retrieved via `IAgentConversationRepository`
-- **Session State**: In-memory agent context per conversation (LangChain manages)
-- **Event Queue**: Redis pub/sub for asynchronous event propagation
-- **Token Usage**: Per-user monthly tracking in `token_usage` table via `ITokenUsageRepository`
+- User state persisted in PostgreSQL (`users` table)
+- Conversation history in `conversation_messages` table
+- Emotional records indexed for pattern analysis
+- Redis event bus queues async tagging operations
+- No in-memory state (stateless design)
+
+---
 
 ## Key Abstractions
 
-**Repository Pattern:**
-- Purpose: Abstract database access behind interfaces defined in domain
-- Examples: `IUserRepository`, `IAgentConversationRepository`, `IEmotionalRecordRepository`, `IBreathingSessionRepository`, `IEventRepository`, `IAnalyticsRepository`, `ITokenUsageRepository`
-- Pattern: One interface per domain concept; implementations use SQLAlchemy ORM
-- Location: `src/domain/{users,chat,records,breathing,events,analytics,usage}/interfaces.py` → `src/infrastructure/{repositories,conversations,records,breathing,events,analytics,usage}/repositories/`
+**ApplicationContainer:**
+- Purpose: Dependency injection registry and composition root
+- Examples: `src/infrastructure/container.py` lines 56-203
+- Pattern: Dataclass with factory method `ApplicationContainer.create()` that wires all dependencies in dependency order
+- Initialization: At app startup via `lifespan()` context manager in `main.py` lines 50-81
+- Lifecycle: Stored in `app.state.container` for access via FastAPI dependency injection
 
-**Service Pattern:**
-- Purpose: Complex operations that don't fit repositories (e.g., external service calls, multi-step orchestration)
-- Examples: `IAgentService` (LLM conversation), `IEventBus` (event publishing), `ITaggingService` (semantic tagging), `IProfileService` (user profiling), `IUserKnowledgeService` (user context extraction)
-- Pattern: Interface in application layer, implementation in infrastructure
-- Location: `src/application/services/` → `src/infrastructure/services/`
+**IUserRepository (Interface):**
+- Purpose: Abstract contract for user persistence operations
+- Examples: `src/domain/users/interfaces.py`
+- Implementation: `SqlAlchemyUserRepository` at `src/infrastructure/repositories/sqlalchemy_user_repository.py`
+- Pattern: Domain interface defines contract, infrastructure implements with SQLAlchemy
 
-**Use Case Pattern:**
-- Purpose: Single business transaction orchestration
-- Example: `AgentChatUseCase` coordinates user lookup, agent service call, tagging, token logging, suggestion persistence
-- Pattern: Single `execute()` method; constructor dependency injection for all repos and services
-- Location: `src/application/chat/use_cases/agent_chat_use_case.py`
+**IAgentService (Interface):**
+- Purpose: Abstract LLM-based conversation service
+- Examples: `src/application/services/agent_service.py`
+- Implementation: `LangChainAgentService` at `src/infrastructure/services/langchain_agent_service.py`
+- Real service uses LangChain with GPT-4 or Anthropic Claude
 
-**DTO Pattern:**
-- Purpose: Type-safe request/response contracts at API boundaries
-- Examples: `ChatRequest`, `ChatResponse`, `UserRegistrationRequest`, `TokenResponse`, `ConversationHistoryResponse`
-- Pattern: Frozen dataclasses with `__post_init__` validation; `to_dict()` for serialization
-- Location: `src/application/dtos/chat_dtos.py`, `src/application/dtos/profile_dtos.py`
+**Use Cases:**
+- Purpose: Orchestrate application logic and business rules
+- Examples:
+  - `AgentChatUseCase` at `src/application/chat/use_cases/agent_chat_use_case.py` (complex: ~200 lines)
+  - `GetMonthlyUsageUseCase` at `src/application/usage/use_cases/get_monthly_usage_use_case.py` (simple: 16 lines, good for unit testing)
+- Pattern: Single public `execute()` method that returns domain objects or DTOs
 
-**Value Object Pattern:**
-- Purpose: Immutable domain concepts with internal consistency rules
-- Examples: `AgentPersonality` (enum-like with validation), `UserProfile` (complex user data structure)
-- Pattern: Dataclasses with validation methods; used within domain entities
-- Location: `src/domain/value_objects/agent_personality.py`, `src/domain/value_objects/user_profile.py`
+**Domain Events:**
+- Purpose: Record fact that something happened (User created, Profile updated)
+- Examples: `UserCreatedEvent`, `UserProfileUpdatedEvent` in `src/domain/events/domain_events.py`
+- Collected in entities (e.g., `User._domain_events` list)
+- Published to Redis event bus after persistence
+
+---
 
 ## Entry Points
 
-**HTTP Server:**
+**Application Startup:**
 - Location: `main.py` (project root)
-- Triggers: `python -m uvicorn main:app --reload` or systemd service
-- Responsibilities: Imports app factory, runs uvicorn with config
+- Triggers: `python -m uvicorn main:app --reload` or `docker-compose up`
+- Responsibilities:
+  - Creates FastAPI app via `create_application()`
+  - Initializes `ApplicationContainer` during lifespan startup
+  - Wires all routers with `/v1/api` prefix
+  - Configures CORS, middleware, exception handlers
+  - Returns app to uvicorn
 
-**App Factory:**
-- Location: `src/presentation/api/main.py` function `create_application()`
-- Triggers: Called by lifespan context manager in `main.py`
-- Responsibilities: Creates FastAPI instance, wires middleware, mounts routers, sets exception handlers
+**Health Endpoint:**
+- Location: `src/presentation/api/routers/health.py`
+- Triggers: `GET /health` (no auth required)
+- Responsibilities:
+  - Calls `container.health_check()` which checks database, LLM providers, event bus, agent service
+  - Returns component status and entity counts
 
-**Container Initialization:**
-- Location: `src/infrastructure/container.py` function `initialize_container()`
-- Triggers: Called during app startup via lifespan context manager
-- Responsibilities: Orchestrates database connection, creates all repositories/services, wires entire DI container
+**Chat Endpoint (Primary):**
+- Location: `src/presentation/api/routers/chat.py` lines 44-120
+- Triggers: `POST /v1/api/chat` with JWT auth
+- Responsibilities:
+  - Validates message length (max 700 chars)
+  - Calls `AgentChatUseCase.execute()`
+  - Converts domain response to API response schema
+  - Handles error cases with HTTPException
 
-**Router Entry Points (Protected Routes):**
-- `POST /v1/api/chat` → `chat.py:chat_with_agent()` (requires JWT)
-- `POST /v1/api/auth/login` → `auth.py:login()` (public)
-- `POST /v1/api/auth/register` → `auth.py:register()` (public)
-- `GET /v1/api/profile` → `profile.py:get_profile()` (requires JWT)
-- `GET /v1/api/emotional_records` → `records.py:get_records()` (requires JWT)
-- `POST /v1/api/breathing_sessions` → `breathing.py:start_session()` (requires JWT)
-- `GET /health` → `health.py:health_check()` (public)
-- `WS /ws/...` → `ws.py:websocket_endpoint()` (JWT via URL param)
+**Auth Endpoints:**
+- Location: `src/presentation/api/routers/auth.py`
+- Triggers: `POST /v1/api/auth/login`, `POST /v1/api/auth/register`
+- Responsibilities: JWT token generation, user registration/login
+
+**WebSocket Endpoint:**
+- Location: `src/presentation/api/routers/ws.py`
+- Triggers: `ws://localhost:8000/ws/{user_id}`
+- Responsibilities: Real-time calendar updates via token-based authentication
+
+---
 
 ## Error Handling
 
-**Strategy:** Layered exception hierarchy with centralized middleware catch
+**Strategy:** Exception handling at multiple layers:
+1. **Domain**: No exceptions (domain entities fail fast via invalid state)
+2. **Application**: Raise `ApplicationException` from use cases with message + details
+3. **Infrastructure**: Catch DB/service errors, wrap in `ApplicationException`
+4. **Presentation**:
+   - FastAPI validation errors → 422 Unprocessable Entity
+   - ApplicationException → 400 Bad Request
+   - Unhandled exceptions → 500 Internal Server Error
+   - All errors logged to stdout and optionally CloudWatch
 
 **Patterns:**
-- Domain → Application exception types raised from use cases (UserNotFoundException, AgentServiceException, etc.)
-- Application exceptions caught by `ErrorHandlingMiddleware` in `src/presentation/api/middleware/error_handling.py`
-- HTTPExceptions from Pydantic validation caught by FastAPI's built-in handler
-- Unhandled exceptions caught by general exception handler → 500 response
-- All errors logged to CloudWatch when mobile_logs_enabled (best-effort)
-- Location: `src/application/exceptions.py` (exception hierarchy), `src/presentation/api/middleware/error_handling.py` (centralized handling), `main.py` (per-exception handlers)
+
+```python
+# In use case (application layer)
+if not user:
+    raise ApplicationException("User not found", {"user_id": str(user_id)})
+
+# In middleware (presentation layer)
+try:
+    response = await call_next(request)
+except Exception as e:
+    logger.error(f"Error: {e}", exc_info=True)
+    return JSONResponse(status_code=500, content={"error": "internal_server_error"})
+
+# In route handler
+@app.exception_handler(ApplicationException)
+async def app_exception_handler(request, exc: ApplicationException):
+    return JSONResponse(status_code=400, content={"error": exc.message})
+```
+
+---
 
 ## Cross-Cutting Concerns
 
 **Logging:**
-- Framework: Python standard logging module
-- Configuration: `src/infrastructure/config/settings.py` controls log level per environment
-- Approach: Every router endpoint and use case logs entry/exit; middleware logs all requests; exceptions logged with traceback
+- Framework: Python `logging` module
+- Configuration: `settings.log_level` controls verbosity (DEBUG/INFO/WARNING/ERROR)
+- Pattern: Each module has module-level logger: `logger = logging.getLogger(__name__)`
+- CloudWatch: Optional integration via `CloudWatchLogger` in `src/infrastructure/observability/cloudwatch_logger.py` (enables optional mobile error logging)
 
 **Validation:**
-- Request-level: Pydantic models in routers auto-validate against schema
-- DTO-level: Dataclass `__post_init__` methods validate semantics (e.g., intensity 1-10, valid email)
-- Domain-level: Entity methods validate business rules (e.g., User.update_profile, User.change_agent_personality)
+- Request DTOs: Pydantic models (`ChatApiRequest`, etc.) validate at FastAPI router entry
+- Domain validation: Business rules in entity methods (e.g., `User.is_profile_complete()`)
+- Custom validators: `src/presentation/api/validators/data_validators.py` for complex field validation
 
 **Authentication:**
-- Method: JWT HS256 (symmetric key)
-- Token extraction: `HTTPBearer` dependency in `src/presentation/api/routers/deps.py`
-- Validation: Centralized in `src/presentation/dependencies.py:get_current_user_id()`
-- Fallback: Hardcoded UUID fallback in `deps.py` (security debt - see CONCERNS.md)
-
-**Observability:**
-- Health checks: `GET /health` returns component status (database, LLM providers, event bus, agent service)
-- Container method: `ApplicationContainer.health_check()` probes all components
-- Metrics endpoint: Not yet exposed (metrics collected but not public)
-- CloudWatch integration: Optional mobile error logging in error handler
+- Method: JWT Bearer tokens (HS256 symmetric)
+- Implementation: `get_current_user_id()` in `src/presentation/dependencies.py` decodes JWT
+- Token claims: `sub` (user UUID), `typ` ("access"), `iss` ("emotionai-api")
+- Applied to: All `/v1/api/` routes except `/auth` (via FastAPI dependency)
+- Known Issue: Hardcoded UUID fallback in `deps.py` (security bypass noted in CLAUDE.md)
 
 **Rate Limiting:**
+- Middleware: `RateLimitingMiddleware` at `src/presentation/api/middleware/rate_limiting.py`
 - Configuration: `settings.rate_limit_requests` (requests per minute)
-- Implementation: `RateLimitingMiddleware` in `src/presentation/api/middleware/rate_limiting.py`
-- Applied: All non-health endpoints when enabled
+- Disabled in development if set to 0
+
+**DI Wiring:**
+- Container: `ApplicationContainer` at `src/infrastructure/container.py` lines 56-203
+- Pattern: Factory method creates all instances in dependency order
+- Real vs Stub Services:
+  - **Real**: `LangChainAgentService` (uses GPT-4), `OpenAITaggingService` (uses GPT-4o-mini), `SqlAlchemyUserRepository`
+  - **Stub**: `MockUserKnowledgeService` (returns empty/default), `MockSimilaritySearchService` (returns empty)
+  - TODO comment at line 155: "Initialize mock services (to be replaced with full implementations)"
+
+---
+
+## Service Registry (Real vs Stub)
+
+**Real Implementations (Production-Ready):**
+- `LangChainAgentService` at `src/infrastructure/services/langchain_agent_service.py`: Full LangChain agent with memory, tools, GPT-4
+- `OpenAITaggingService` at `src/infrastructure/services/openai_tagging_service.py`: Semantic tagging pipeline with GPT-4o-mini
+- `SqlAlchemyUserRepository` and all other repos: Full SQLAlchemy CRUD with async/await
+- `RedisEventBus` at `src/infrastructure/services/redis_event_bus.py`: Pub/sub messaging
+- `ProfileService` at `src/infrastructure/services/profile_service.py`: User profile computation
+
+**Stub Implementations (Placeholders):**
+- `MockUserKnowledgeService` at `src/infrastructure/services/mock_user_knowledge_service.py`: Returns empty/default values, all methods no-op
+- `MockSimilaritySearchService` at `src/infrastructure/services/mock_similarity_search_service.py`: Returns empty list, no-op
+
+**Initialization Location:** `src/infrastructure/container.py` lines 118-177 create and register all services to container
 
 ---
 

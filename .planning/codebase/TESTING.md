@@ -5,385 +5,416 @@
 ## Test Framework
 
 **Runner:**
-- pytest 7.4.0+
-- Config: No `pytest.ini` or `setup.cfg` detected — uses pytest defaults
-- Async support: `pytest-asyncio` 0.21.0+ (in requirements.txt)
+- pytest 7.4.0+ (from `requirements.txt`: `pytest>=7.4.0`)
+- pytest-asyncio 0.21.0+ for async test support (from `requirements.txt`: `pytest-asyncio>=0.21.0`)
+- Config: No explicit `pytest.ini` or `pyproject.toml [tool.pytest.*]` found — uses pytest defaults
 
 **Assertion Library:**
-- Python standard `assert` statements (no external assertion library detected)
+- Python's built-in `assert` statements
+- No Pydantic validators for test data validation (yet)
 
 **Run Commands:**
 ```bash
-pytest                              # Run all tests
-pytest -v                           # Verbose output with test names
-pytest tests/                       # Run specific test directory
-pytest -k "test_name"               # Run tests matching pattern
-pytest --asyncio-mode=auto          # Run async tests (may be needed)
+pytest tests/                  # Run all tests in tests/ directory
+pytest tests/ -v               # Verbose output
+pytest tests/ -k "test_name"   # Run tests matching pattern
+pytest tests/ --tb=short       # Short traceback format
+pytest tests/ -x               # Stop on first failure
+pytest tests/ --asyncio-mode=auto  # Auto asyncio mode for pytest-asyncio
 ```
-
-**Note:** Test discovery follows pytest defaults — looks for `test_*.py` or `*_test.py` files, test classes named `Test*`, test functions named `test_*`.
 
 ## Test File Organization
 
 **Location:**
-- Co-located with source code in `tests/` directory at project root
-- Mirror source structure: `tests/domain/`, `tests/application/`, `tests/infrastructure/`
-- Directory structure matches `src/` organization
+- Co-located structure: `tests/` directory mirrors `src/` structure
+- `tests/domain/` — domain layer tests
+- `tests/application/` — application layer tests
+- `tests/infrastructure/` — (currently empty, should contain integration tests)
 
 **Naming:**
-- Test files: `test_[module_name].py` (e.g., `test_user.py`, `test_chat_dtos.py`)
-- Test functions: `test_[feature]_[scenario]()` (e.g., `test_user_creation_success()`, `test_invalid_message_raises_error()`)
-- Test classes: Optional but could use `Test[Feature]` if grouping tests (e.g., `TestUserEntity`, `TestChatResponse`)
+No explicit `test_*.py` pattern enforced in current tests, but should follow:
+- Test files: `test_*.py` or `*_test.py` (pytest auto-discovery)
+- Test functions: `def test_*()` or `async def test_*()`
+- Fixture files: `conftest.py` (currently missing from project root and test subdirectories)
 
-**Structure:**
+**Current Structure:**
 ```
 tests/
-├── __pycache__/          # Pytest cache directory
-├── domain/               # Domain layer tests
-│   ├── entities/
-│   │   └── test_user.py
-│   ├── value_objects/
-│   │   ├── test_user_profile.py
-│   │   └── test_agent_personality.py
-│   ├── events/
-│   │   └── test_domain_events.py
-│   └── chat/
-│       └── test_entities.py
-├── application/          # Application layer tests
-│   ├── dtos/
-│   │   ├── test_chat_dtos.py
-│   │   └── test_profile_dtos.py
+├── application/
 │   ├── chat/
 │   │   └── use_cases/
-│   │       └── test_agent_chat_use_case.py
-│   └── usage/
-│       └── use_cases/
-│           └── test_get_monthly_usage_use_case.py
-└── infrastructure/       # Infrastructure tests (currently minimal)
+│   │       └── (empty - test_agent_chat_use_case.py was deleted)
+│   ├── dtos/
+│   │   └── (empty - test_chat_dtos.py, test_profile_dtos.py were deleted)
+│   ├── usage/
+│   │   └── use_cases/
+│   │       └── (empty - test_get_monthly_usage_use_case.py was deleted)
+│   ├── (empty - test_exceptions.py was deleted)
+├── domain/
+│   ├── chat/
+│   │   └── (empty - test_entities.py was deleted)
+│   ├── entities/
+│   │   └── (empty - test_user.py was deleted)
+│   ├── events/
+│   │   └── (empty - test_domain_events.py was deleted)
+│   └── value_objects/
+│       └── (empty - test_agent_personality.py, test_user_profile.py were deleted)
+└── (conftest.py missing)
 ```
-
-**Current state:** Test source files (`.py`) exist in pyc-compiled form in `tests/` but source is not in version control — only `.pyc` files persist. This indicates tests were compiled but source files were removed or not committed.
 
 ## Test Structure
 
-**Typical test pattern (inferred from pyc naming and codebase analysis):**
+**Current State:**
+Test files exist in `.pytest_cache/` but source files have been removed from the repository. This indicates a recent cleanup or removal of existing tests.
+
+**Cached test names indicate prior patterns:**
+- `test_agent_chat_use_case.py` (under `tests/application/chat/use_cases/`)
+- `test_chat_dtos.py`, `test_profile_dtos.py` (under `tests/application/dtos/`)
+- `test_get_monthly_usage_use_case.py` (under `tests/application/usage/use_cases/`)
+- `test_exceptions.py` (under `tests/application/`)
+- `test_entities.py` (under `tests/domain/chat/`)
+- `test_user.py` (under `tests/domain/entities/`)
+- `test_domain_events.py` (under `tests/domain/events/`)
+- `test_agent_personality.py`, `test_user_profile.py` (under `tests/domain/value_objects/`)
+
+**Patterns to adopt (Milestone 1 goal):**
+
+Use pytest with async support. Standard test structure:
 
 ```python
 import pytest
 from uuid import uuid4
-
-from src.domain.entities.user import User
-from src.application.dtos.chat_dtos import ChatRequest
-
-
-class TestChatRequest:
-    """Test suite for ChatRequest DTO validation"""
-
-    def test_valid_chat_request_creation(self):
-        """ChatRequest accepts valid message"""
-        user_id = uuid4()
-        request = ChatRequest(
-            user_id=user_id,
-            message="How are you feeling today?",
-            agent_type="therapy"
-        )
-        assert request.user_id == user_id
-        assert request.message == "How are you feeling today?"
-
-    def test_empty_message_raises_error(self):
-        """ChatRequest raises ValueError for empty message"""
-        user_id = uuid4()
-        with pytest.raises(ValueError):
-            ChatRequest(user_id=user_id, message="", agent_type="therapy")
-
-    def test_message_too_long_raises_error(self):
-        """ChatRequest raises ValueError for message > 2000 chars"""
-        user_id = uuid4()
-        long_message = "x" * 2001
-        with pytest.raises(ValueError):
-            ChatRequest(user_id=user_id, message=long_message)
-
-    def test_invalid_agent_type_raises_error(self):
-        """ChatRequest raises ValueError for unknown agent type"""
-        user_id = uuid4()
-        with pytest.raises(ValueError):
-            ChatRequest(
-                user_id=user_id,
-                message="Hello",
-                agent_type="unknown_agent"
-            )
-
+from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio
-async def test_user_chat_use_case_execution():
-    """Test full chat use case flow"""
-    # Setup: Create mock services/repos
-    # Act: Execute use case
-    # Assert: Verify response shape and content
-    pass
+async def test_use_case_executes_successfully():
+    # Arrange
+    user_id = uuid4()
+    mock_repository = AsyncMock()
+    mock_service = AsyncMock()
+    use_case = AgentChatUseCase(
+        user_repository=mock_repository,
+        agent_service=mock_service,
+        # ... other dependencies
+    )
+
+    # Act
+    result = await use_case.execute(user_id, "therapy", "Hello")
+
+    # Assert
+    assert result is not None
+    assert result.agent_type == "therapy"
+    mock_service.send_message.assert_called_once()
 ```
-
-**Setup pattern:**
-- No dedicated fixtures detected (no `conftest.py` with shared fixtures)
-- Likely using inline test setup with `pytest.fixture` decorators if needed
-- Manual object creation in each test preferred
-
-**Async testing:**
-- Use `@pytest.mark.asyncio` decorator for async test functions
-- Tests awaiting async functions should be decorated with this marker
-- Asyncio mode: likely configured in pytest defaults or via `--asyncio-mode=auto` flag
 
 ## Mocking
 
-**Framework:** Standard `unittest.mock` from Python standard library (expected based on dependencies)
+**Framework:** `unittest.mock` (standard library)
+- `AsyncMock` for async methods
+- `MagicMock` for sync methods
+- `patch` for module-level mocking
 
-**Patterns:**
+**Patterns for AsyncMock:**
+
 ```python
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock
 
-# Mock a service
-mock_agent_service = Mock(spec=IAgentService)
-mock_agent_service.send_message = AsyncMock(return_value=ChatResponse(...))
+# Mock async method
+mock_service = AsyncMock()
+mock_service.send_message.return_value = ChatResponse(...)
+await mock_service.send_message(user_id, "therapy", "message")
 
-# Mock database
-mock_db = Mock()
-mock_session = AsyncMock()
-mock_db.get_session.return_value.__aenter__.return_value = mock_session
-
-# Patch a module function
-with patch('src.infrastructure.services.openai_tagging_service.openai.AsyncOpenAI') as mock_openai:
-    mock_openai.return_value.chat.completions.create.return_value = ...
+# Mock called assertion
+mock_service.send_message.assert_called_once_with(user_id, "therapy", "message")
 ```
 
 **What to Mock:**
-- External service calls: OpenAI API, Redis connections, database sessions
-- Repository layer in application tests: Replace with mocks that return test data
-- Event bus: Replace with mock that records published events
-- LLM services: Return synthetic responses
-- Time-dependent operations: Mock `datetime.now()` if test timing matters
+- External services: `IAgentService`, `ITaggingService`, `IEventBus`, LLM APIs
+- Database repositories: `IUserRepository`, `IEmotionalRecordRepository`, `IEventRepository`
+- External APIs: OpenAI, Anthropic LLM calls (expensive and slow)
 
 **What NOT to Mock:**
-- Domain entities: Use real domain objects for testing business logic
-- Value objects: Create real instances (they're immutable and deterministic)
-- DTOs: Create real instances with test data (they're just data containers)
-- Repository interfaces: Test real implementation with test database if possible
-- Clean architecture boundaries: Test through public interfaces to catch integration issues
+- Domain entities: `User`, `UserProfile`, `AgentPersonality` — test the actual business logic
+- Value objects: Test immutability and validation directly
+- DTOs: Test serialization/deserialization with real instances
+- Dataclass conversions: Test mapping functions directly
+
+**Example: Unit test for domain entity**
+
+```python
+@pytest.mark.asyncio
+async def test_user_can_update_profile():
+    # No mocks — test domain logic directly
+    user = User(
+        id=uuid4(),
+        email="test@example.com",
+        hashed_password="hash",
+        is_active=True,
+    )
+
+    user.update_profile({"name": "John", "age": 30})
+
+    assert user.profile.name == "John"
+    assert user.profile.age == 30
+    assert len(user.get_domain_events()) > 0  # UserProfileUpdatedEvent
+```
 
 ## Fixtures and Factories
 
 **Test Data:**
-Based on domain code, create reusable test builders:
+No factory pattern detected in current codebase. For Milestone 1, create:
 
 ```python
-@pytest.fixture
-def sample_user_id():
-    """Provide a test UUID"""
-    return UUID("550e8400-e29b-41d4-a716-446655440000")
+# tests/conftest.py
+import pytest
+from uuid import uuid4
 
 @pytest.fixture
-def sample_user():
-    """Create a User entity for testing"""
+def user_id():
+    return uuid4()
+
+@pytest.fixture
+def mock_user():
+    from src.domain.entities.user import User
     return User(
-        id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+        id=uuid4(),
         email="test@example.com",
-        hashed_password="hashed_password_string",
-        is_active=True
+        hashed_password="hashed_password",
+        is_active=True,
     )
 
 @pytest.fixture
-def sample_chat_request():
-    """Create a ChatRequest DTO for testing"""
-    return ChatRequest(
-        user_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
-        message="I'm feeling anxious",
+def mock_chat_response():
+    from src.application.dtos.chat_dtos import ChatResponse
+    return ChatResponse(
+        message="Test response",
         agent_type="therapy",
-        context={}
-    )
-
-@pytest.fixture
-def sample_user_profile():
-    """Create a UserProfile value object"""
-    return UserProfile(
-        name="John Doe",
-        age=30,
-        gender="male",
-        goals=["manage anxiety", "improve sleep"],
-        concerns=["work stress"],
-        communication_style="direct"
+        user_message="Test message",
+        conversation_id="conv-123",
     )
 ```
 
 **Location:**
-- Shared fixtures in `tests/conftest.py` if created (currently doesn't exist)
-- Local fixtures in test modules: `@pytest.fixture` decorator in same file
-- Factory functions in `tests/factories/` if needed for complex object construction
+- Root conftest: `tests/conftest.py` — shared fixtures
+- Layer-specific conftest: `tests/{domain|application|infrastructure}/conftest.py` — layer-specific fixtures
+
+**Convention:**
+Use `mock_` prefix for fixtures providing mock objects, not `user_`, which should be real/minimal valid instances.
 
 ## Coverage
 
-**Requirements:** Not enforced (no coverage configuration detected)
+**Requirements:** Not enforced yet. Milestone 1 goal: **>70% on domain and application layers**.
+
+**Target coverage breakdown:**
+- Domain layer (entities, value objects, events): **100%** — no external dependencies, fast to test
+- Application layer (use cases, DTOs, service interfaces): **80%+** — core business logic
+- Infrastructure layer (repositories, services): **50%+** — integration tests preferred, slower feedback
+- Presentation layer (routers): **<50%** — rely on integration tests for API coverage
 
 **View Coverage:**
 ```bash
-pytest --cov=src --cov-report=html    # Generate HTML coverage report
-pytest --cov=src --cov-report=term    # Terminal coverage summary
+pytest tests/ --cov=src --cov-report=html
+# Opens htmlcov/index.html with line-by-line coverage
 ```
 
-**Coverage report location:** `htmlcov/index.html` or displayed in terminal
+**Coverage thresholds for CI/CD (future):**
+```ini
+[coverage:run]
+branch = True
+omit =
+    */tests/*
+    */venv/*
+
+[coverage:report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+min_version = 3.11
+fail_under = 70
+```
 
 ## Test Types
 
 **Unit Tests:**
-- Scope: Single domain object, single function, or single DTO
-- Approach: Test business logic in isolation using real domain objects, mock external dependencies
-- Examples: Testing `User.update_profile()` business logic, testing DTO validation in `__post_init__`, testing value object methods like `UserProfile.is_complete()`
-- No database required; pure function testing
+- Scope: Single class/function in isolation
+- Mocking: All external dependencies (services, repositories)
+- Speed: <100ms per test
+- Location: `tests/domain/`, `tests/application/`
+- Examples:
+  - Test a domain entity method with no side effects
+  - Test a DTO's `__post_init__` validation
+  - Test a use case with all dependencies mocked
 
 **Integration Tests:**
-- Scope: Full use case flow through layers; repository → service → application → presentation
-- Approach: Mock external services (OpenAI API, Redis) but use real repositories and domain objects
-- Database: Use test database or in-memory SQLite for repository tests
-- Example: Test `AgentChatUseCase.execute()` with mock agent service but real conversation repository
+- Scope: Use case + real database + real services (or test doubles)
+- Mocking: Only external APIs (OpenAI, Anthropic)
+- Speed: 1-5 seconds per test
+- Location: `tests/infrastructure/` (currently empty — needs creation)
+- Examples:
+  - Test `AgentChatUseCase` with real SQLAlchemy repository + mocked OpenAI
+  - Test event repository and event bus together
+  - Test user registration through all layers
 
 **E2E Tests:**
-- Scope: Full HTTP endpoint through FastAPI router, dependency injection, all layers
-- Approach: Mock only external services (OpenAI API, Redis); use test database
-- Framework: Could use `TestClient` from FastAPI or `httpx` for async requests
-- Not currently present in codebase
-
-```python
-from fastapi.testclient import TestClient
-
-def test_chat_endpoint_e2e(client: TestClient):
-    """Test POST /v1/api/chat endpoint"""
-    response = client.post(
-        "/v1/api/chat",
-        json={"message": "How are you?", "agent_type": "therapy"},
-        headers={"Authorization": "Bearer <test_token>"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert "message" in data
-    assert "agent_type" in data
-```
+- Not in current test suite
+- Would require full API startup, live database, mocked LLMs
+- Reserved for smoke tests in deployment pipeline
 
 ## Common Patterns
 
 **Async Testing:**
+
+```python
+import pytest
+
+@pytest.mark.asyncio
+async def test_async_operation():
+    # pytest-asyncio automatically handles event loop
+    result = await some_async_function()
+    assert result is not None
+```
+
+**Multiple async calls:**
+
 ```python
 @pytest.mark.asyncio
-async def test_repository_get_user_by_id():
-    """Test async repository method"""
-    # Create mock database connection
-    mock_db = AsyncMock()
-    repo = SqlAlchemyUserRepository(mock_db)
+async def test_multiple_async_calls():
+    # Sequential
+    result1 = await service.method1()
+    result2 = await service.method2(result1)
+    assert result2 is not None
 
-    # Mock the session and query result
-    mock_session = AsyncMock()
-    mock_db.get_session.return_value.__aenter__.return_value = mock_session
-    mock_db.get_session.return_value.__aexit__.return_value = None
-
-    # Configure the mock result
-    mock_result = Mock()
-    mock_result.scalar_one_or_none.return_value = UserModel(id=uuid4(), email="test@test.com")
-    mock_session.execute.return_value = mock_result
-
-    # Execute and assert
-    user = await repo.get_by_id(uuid4())
-    assert user is not None
+    # Parallel
+    import asyncio
+    result1, result2 = await asyncio.gather(
+        service.method1(),
+        service.method2(),
+    )
 ```
 
 **Error Testing:**
-```python
-def test_validation_exception_with_details():
-    """Test ValidationException includes context"""
-    with pytest.raises(ValidationException) as exc_info:
-        raise ValidationException(
-            "Email is required",
-            field="email",
-            value=None
-        )
 
-    assert exc_info.value.message == "Email is required"
-    assert exc_info.value.field == "email"
-
-@pytest.mark.asyncio
-async def test_use_case_raises_user_not_found():
-    """Test use case raises appropriate exception"""
-    # Setup mocks to return None user
-    mock_repo = Mock(spec=IUserRepository)
-    mock_repo.get_by_id = AsyncMock(return_value=None)
-
-    use_case = SomeUseCase(user_repository=mock_repo)
-
-    # Should raise exception
-    with pytest.raises(UserNotFoundException):
-        await use_case.execute(user_id=uuid4())
-```
-
-**Parametrized Testing:**
 ```python
 import pytest
+from src.application.exceptions import ValidationException
 
-@pytest.mark.parametrize("invalid_agent_type", [
-    "unknown",
-    "invalid_type",
-    "",
-    123,
-])
-def test_chat_request_rejects_invalid_agent_types(invalid_agent_type):
-    """Test ChatRequest validation for various invalid agent types"""
-    with pytest.raises(ValueError):
+@pytest.mark.asyncio
+async def test_validates_input():
+    use_case = AgentChatUseCase(...)
+
+    with pytest.raises(ValidationException) as exc_info:
+        await use_case.execute(user_id, "", "message")  # Empty agent_type
+
+    assert "agent_type" in str(exc_info.value)
+```
+
+**DTO validation:**
+
+```python
+import pytest
+from src.application.dtos.chat_dtos import ChatRequest
+
+def test_chat_request_validates_message_length():
+    with pytest.raises(ValueError, match="Message too long"):
+        ChatRequest(
+            user_id=uuid4(),
+            message="x" * 2001,  # > 2000 chars
+            agent_type="therapy",
+        )
+
+def test_chat_request_validates_agent_type():
+    with pytest.raises(ValueError, match="Invalid agent type"):
         ChatRequest(
             user_id=uuid4(),
             message="Hello",
-            agent_type=invalid_agent_type
+            agent_type="invalid",  # Not in ["therapy", "wellness"]
         )
 ```
 
-## Test Database Setup
+**Repository testing pattern:**
 
-**Approach (expected, not explicitly configured):**
-- Use SQLite in-memory database for tests: `DATABASE_URL="sqlite:///:memory:"`
-- Or use separate test PostgreSQL database configured in test environment
-- Before each test: Run migrations or create schema
-- After each test: Rollback or drop tables
-
-**Example setup in conftest.py (if needed):**
 ```python
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+@pytest.mark.asyncio
+async def test_user_repository_saves_and_retrieves():
+    db_connection = # ... real test database
+    repo = SqlAlchemyUserRepository(db_connection)
 
-@pytest.fixture
-async def test_db():
-    """Create test database and run migrations"""
-    engine = create_engine("sqlite:///:memory:")
-    # Create schema
-    Base.metadata.create_all(engine)
+    # Arrange
+    user = User(id=uuid4(), email="test@example.com", ...)
 
-    yield engine
+    # Act
+    await repo.save(user)
+    retrieved = await repo.get_by_id(user.id)
 
-    # Cleanup
-    Base.metadata.drop_all(engine)
+    # Assert
+    assert retrieved is not None
+    assert retrieved.email == user.email
 ```
 
-## Current Testing Status
+## Test Execution
 
-**Test files present but not tracked:**
-- Test source files (`.py`) not in version control
-- Only `.pyc` compiled bytecode files present in `tests/` directories
-- Suggests tests existed but were removed from tracking or not yet implemented in current branch
+**Quick feedback loop (5-30 seconds):**
+```bash
+pytest tests/domain/ tests/application/dtos tests/application/exceptions -v --tb=short
+```
 
-**Compilation evidence:**
-- `test_agent_chat_use_case.cpython-312-pytest-9.0.2.pyc` in `tests/application/chat/use_cases/__pycache__/`
-- `test_chat_dtos.cpython-312-pytest-9.0.2.pyc` in `tests/application/dtos/__pycache__/`
-- Multiple other test bytecode files present
+**Full unit test suite (30 seconds - 2 minutes, once written):**
+```bash
+pytest tests/ -v --tb=short
+```
 
-**Next steps:**
-- Implement test suite following patterns above
-- Place test files in `tests/` directory structure
-- Commit test files to version control
-- Add pytest configuration if special settings needed
+**With coverage report:**
+```bash
+pytest tests/ --cov=src.domain --cov=src.application --cov-report=term-missing
+```
+
+**Watch mode (needs pytest-watch):**
+```bash
+ptw -- tests/domain/ -v
+```
+
+## Current Test Debt
+
+**P0 — Blocks Milestone 1:**
+1. No conftest.py with shared fixtures
+2. Test files deleted from repository (seen in `.pytest_cache/` but sources removed)
+3. No unit test suite for use cases (`AgentChatUseCase`, `GetMonthlyUsageUseCase` are critical)
+4. No domain entity unit tests (`User`, `UserProfile` validation)
+5. No DTO validation tests
+
+**P1 — Test Coverage Gaps:**
+- `src/presentation/api/routers/` — no unit tests (mock container, services)
+- `src/infrastructure/services/` — no unit tests for LLM/tagging services
+- `src/infrastructure/repositories/` — no integration tests with test database
+- Middleware (`error_handling.py`, `logging.py`, `rate_limiting.py`) — untested
+- Exception handling paths — not validated
+
+**P2 — Infrastructure for Milestone 1:**
+- Create `tests/conftest.py` with base fixtures
+- Set up pytest asyncio mode in pyproject.toml or pytest.ini
+- Configure coverage reporting
+- Add conftest to `tests/domain/` and `tests/application/` for layer-specific fixtures
+- Create test database fixture for integration tests
+
+## Milestone 1 Goals
+
+**Target: >70% coverage on domain + application layers**
+
+**Deliverables:**
+1. Unit tests for all domain entities and value objects (`tests/domain/`)
+2. Unit tests for all use cases (`tests/application/chat/use_cases/`, `tests/application/usage/use_cases/`)
+3. DTO validation tests (`tests/application/dtos/`)
+4. Service interface compliance tests (`tests/application/services/`)
+5. Conftest setup with async fixtures and mocking patterns
+6. Coverage report showing >70% on domain and application
+
+**Not in scope:**
+- Presentation layer tests (routers/middleware)
+- Infrastructure integration tests with real databases
+- E2E tests
 
 ---
 

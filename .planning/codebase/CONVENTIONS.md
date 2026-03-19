@@ -5,249 +5,232 @@
 ## Naming Patterns
 
 **Files:**
-- Router files: `[feature]_router.py` (e.g., `chat.py`, `auth.py`) → located in `src/presentation/api/routers/`
-- Service files: `[service_name]_service.py` (e.g., `langchain_agent_service.py`, `openai_tagging_service.py`) → located in `src/infrastructure/services/`
-- Repository files: `sqlalchemy_[entity]_repository.py` (e.g., `sqlalchemy_user_repository.py`) → located in `src/infrastructure/repositories/`
-- Domain entities: `[entity].py` (e.g., `user.py`) → located in `src/domain/entities/`
-- Value objects: `[concept].py` (e.g., `user_profile.py`, `agent_personality.py`) → located in `src/domain/value_objects/`
-- DTOs: `[domain]_dtos.py` (e.g., `chat_dtos.py`, `profile_dtos.py`) → located in `src/application/dtos/`
-- Use cases: `[verb]_[entity]_use_case.py` (e.g., `agent_chat_use_case.py`, `get_monthly_usage_use_case.py`) → located in `src/application/[feature]/use_cases/`
+- Snake_case for all files: `agent_chat_use_case.py`, `openai_tagging_service.py`, `sqlalchemy_user_repository.py`
+- Routers grouped by domain: `src/presentation/api/routers/{domain}.py`
+- Repositories follow pattern: `sqlalchemy_{entity}_{repository}.py` (e.g., `sqlalchemy_user_repository.py`)
+- Service implementations: `{provider}_{service_type}_service.py` (e.g., `openai_llm_service.py`, `redis_event_bus.py`)
+- Interfaces suffixed with `I`: `IUserRepository`, `IAgentService`, `IEventBus`
 
 **Functions:**
-- Use `snake_case` for all function names: `get_user_id()`, `send_message()`, `_convert_to_dict()`
-- Prefix private/internal functions with single underscore: `_model_to_entity()`, `_parse_jwt()`, `_add_domain_event()`
-- Async functions are regular `async def` with same naming: `async def get_by_id()`, `async def execute()`
-- Handler functions at endpoints: `async def [verb]_[resource]()` (e.g., `async def chat_with_agent()`, `async def get_agent_status()`)
-- Dependency providers: `get_[service_name]()` (e.g., `get_container()`, `get_current_user_id()`, `get_profile_service()`)
+- Snake_case for all functions and methods: `get_by_id()`, `save_event()`, `send_message()`
+- Async functions: `async def method_name()` — never synchronous blocking calls
+- Private methods prefixed with `_`: `_model_to_entity()`, `_create_jwt()`, `_add_domain_event()`
+- Helper functions at module level: `_parse_jwt()`, `_entity_to_model()` — used for mapping and validation
+- Boolean getters: `is_complete()`, `has_crisis_support()`, `is_profile_complete()` — plain names without `get_` prefix
 
 **Variables:**
-- Use `snake_case` for all variables and parameters: `user_id`, `agent_type`, `conversation_id`, `hashed_password`
-- Private module-level variables: `_default_value`, `_cache_dict`
-- Type hints always present: `user_id: UUID`, `message: str`, `context: Optional[Dict[str, Any]]`
+- Camelcase avoided entirely — always snake_case: `user_id`, `agent_type`, `message_count`
+- Type hints required on all function parameters and returns
+- DTOs use `Optional[]` for optional fields: `Optional[str]`, `Optional[Dict[str, Any]]`
+- Instance variables prefixed with `_` for private state: `self._domain_events`, `self._add_domain_event()`
+- Collection names always plural: `goals`, `concerns`, `preferred_activities`
 
-**Classes:**
-- Use `PascalCase` for all classes: `User`, `ChatResponse`, `ApplicationException`, `SqlAlchemyUserRepository`
-- Exception classes: `[ProblemArea]Exception` (e.g., `ValidationException`, `UserNotFoundException`, `AgentServiceException`)
-- Repository interfaces: `I[Entity]Repository` (e.g., `IUserRepository`, `IEmotionalRecordRepository`)
-- Service interfaces: `I[Service]` (e.g., `IAgentService`, `IEventBus`, `ITaggingService`)
-- DTOs: `[Domain]Request`/`[Domain]Response` (e.g., `ChatRequest`, `ChatResponse`, `AgentStatusRequest`)
-- Value objects: `[Concept]` (e.g., `UserProfile`, `AgentPersonality`)
-- SQLAlchemy models: `[Entity]Model` (e.g., `UserModel`, `ConversationModel`)
-
-**Constants:**
-- Use `UPPER_SNAKE_CASE` for constants: `MAX_MESSAGE_LENGTH = 700`, `MENTAL_HEALTH_URGENCY_KEYWORDS = [...]`
-- Field defaults in dataclasses: `agent_type: str = "therapy"` (lowercase for default values)
+**Types:**
+- PascalCase for all classes: `User`, `ChatResponse`, `UserProfile`, `AgentPersonality`
+- Enum classes use PascalCase: `AgentPersonality`, inherit from `Enum` with `.value` property
+- DTO classes suffixed with `Request` or `Response`: `ChatRequest`, `ChatResponse`, `TokenResponse`
+- Value objects defined in `value_objects/` directory: `UserProfile`, `AgentPersonality`
+- Dataclasses used for immutable structures: `@dataclass(frozen=True)` for DTOs and value objects
+- Regular dataclasses: `@dataclass` for entities and mutable structures like `User`
 
 ## Code Style
 
 **Formatting:**
-- No explicit linter/formatter configuration detected
-- Manual formatting observed: 4-space indentation consistently used throughout
-- Line length: typically under 100-120 characters based on observed code
-- Blank lines: 2 blank lines between top-level definitions (classes/functions), 1 blank line between methods
+- Black-style formatting enforced (from requirements.txt: `black>=23.0.0`, `isort>=5.12.0`)
+- Line length follows FastAPI conventions (typically 100-120 chars)
+- No explicit style guide file found, but patterns follow PEP 8 strictly
 
 **Linting:**
-- No `.flake8`, `.pylintrc`, or linting config files detected
-- Linting and formatting packages available in `requirements.txt` (black, isort) but not configured/enforced
+- No `.flake8`, `ruff.toml`, or `pylintrc` found — relies on implicit PEP 8 conformance
+- Code is well-structured with clear separation of concerns
+- Docstrings are descriptive module-level comments, not function-level docstrings
 
-**Imports Structure:**
-Organize imports in the following order:
+**File-level docstrings:**
+All files include module-level docstring describing purpose:
+```python
+"""
+Domain Entity: User
 
-1. **Standard library**: `import asyncio`, `from typing import ...`, `from uuid import UUID`, `from datetime import ...`
-2. **Third-party packages**: `from fastapi import ...`, `from sqlalchemy import ...`, `from pydantic import ...`, `import jwt`, `import logging`
-3. **Local domain imports**: `from ...domain.entities.user import User`, `from ...domain.value_objects.user_profile import UserProfile`
-4. **Local application imports**: `from ...application.services.agent_service import IAgentService`, `from ...application.dtos.chat_dtos import ChatResponse`
-5. **Local infrastructure imports**: `from ...infrastructure.database.models import UserModel`, `from ...infrastructure.config.settings import settings`
-6. **Local presentation imports**: `from .deps import get_container`, `from ....infrastructure.container import ApplicationContainer`
+This represents the core User business entity with all business logic
+encapsulated within the entity itself.
+"""
+```
 
-Use relative imports (e.g., `from ....domain.entities.user` rather than absolute path imports).
+## Import Organization
 
-**Relative import depth pattern:**
-- From `src/presentation/api/routers/chat.py`: use 4 dots `....domain` or `....application`
-- From `src/infrastructure/repositories/sqlalchemy_user_repository.py`: use 3 dots `...domain`
-- Use count matching the depth difference between current location and target package
+**Order:**
+1. Standard library (`logging`, `asyncio`, `datetime`, `dataclasses`, `typing`)
+2. Third-party framework imports (`fastapi`, `sqlalchemy`, `pydantic`, `jwt`)
+3. Internal domain layer (`from ..domain.entities.user import User`)
+4. Internal application layer (`from ...application.services.agent_service import IAgentService`)
+5. Internal infrastructure layer (`from ...infrastructure.database.connection import DatabaseConnection`)
+6. Internal presentation layer (`from ...presentation.api.routers.deps import get_container`)
+
+**Example from `src/application/chat/use_cases/agent_chat_use_case.py`:**
+```python
+import logging
+from typing import Dict, Any, Optional
+from uuid import UUID
+
+from ....domain.users.interfaces import IUserRepository
+from ....domain.events.interfaces import IEventRepository
+from ....domain.records.interfaces import IEmotionalRecordRepository
+from ....infrastructure.database.connection import DatabaseConnection
+from ....infrastructure.database.models import DailySuggestionModel
+from ....application.services.agent_service import IAgentService
+```
+
+**Path Aliases:**
+No path aliases detected. Full relative imports used consistently: `from ....domain.entities.user import User`
+
+**Absolute vs Relative:**
+Relative imports required for clean architecture layers:
+- Within a layer: relative (e.g., `from ..value_objects.user_profile import UserProfile`)
+- Across layers (upward only): relative with appropriate depth (e.g., `from ....domain.entities.user import User`)
 
 ## Error Handling
 
 **Patterns:**
-- **Domain/Application layer**: Raise domain-specific `ApplicationException` subclasses with semantic names:
-  - `ValidationException` for input validation failures
-  - `UserNotFoundException` for missing users
-  - `AgentServiceException` for agent operation failures
-  - `BusinessRuleViolationException` for business logic violations
-  - All exceptions accept optional contextual metadata: `details: Optional[Dict[str, Any]]`
-  - See `src/application/exceptions.py` for full list
+- Custom exceptions inherit from `ApplicationException` (in `src/application/exceptions.py`)
+- Specific exception types for business logic violations:
+  - `ValidationException` — input validation failures
+  - `UserNotFoundException` — user not found
+  - `AgentServiceException` — agent service failures
+  - `TaggingServiceException` — tagging failures
+  - `UserKnowledgeServiceException` — knowledge service failures
+  - `BusinessRuleViolationException` — business rule violations
+  - `InsufficientPermissionsException` — permission checks
+  - `ResourceLimitExceededException` — quota/limit violations
 
-- **Presentation layer (FastAPI routers)**: Convert exceptions to HTTP responses:
-  ```python
-  except ApplicationException as e:
-      raise HTTPException(
-          status_code=status.HTTP_400_BAD_REQUEST,
-          detail={
-              "error": e.__class__.__name__,
-              "message": e.message,
-              "details": e.details
-          }
-      )
-  ```
-
-- **Unexpected errors**: Log with full traceback and return generic 500 error:
-  ```python
-  except Exception as e:
-      logger.error(f"Unexpected error in [endpoint]: {str(e)}", exc_info=True)
-      raise HTTPException(
-          status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-          detail={
-              "error": "InternalServerError",
-              "message": "An unexpected error occurred",
-              "details": {...}
-          }
-      )
-  ```
-
-- **No silent failures**: Always log exceptions before re-raising
-- **Async exception handling**: Try-except blocks present in async functions work identically to sync functions
-- **Database operation failures**: Wrapped in try-except with logging, converted to `RepositoryException` if needed
-
-## Logging
-
-**Framework:** Standard Python `logging` module
-
-**Configuration:** Set in `main.py`:
+**Exception construction:**
+All exceptions require a message, optional details dict:
 ```python
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+raise ValidationException("Message cannot be empty")
+raise UserNotFoundException(user_id="123")
+raise ResourceLimitExceededException(
+    message="Token budget exceeded",
+    resource_type="chat_tokens",
+    limit=10000
 )
 ```
 
-**Patterns:**
-- Get logger per module: `logger = logging.getLogger(__name__)`
-- Log at appropriate levels:
-  - `logger.info()` for business-relevant events (endpoint calls, use case execution)
-  - `logger.debug()` for detailed debugging (method entry/exit if needed)
-  - `logger.warning()` for recoverable issues (crisis detection, empty results)
-  - `logger.error()` for failures requiring attention, always include context
-  - Use `exc_info=True` for exception logging: `logger.error(f"Error: {e}", exc_info=True)`
+**Error handling in routes:**
+- HTTPException from FastAPI raised with status codes: `raise HTTPException(status_code=400, detail="email is required")`
+- Middleware catches and formats: `ErrorHandlingMiddleware` converts unhandled exceptions to JSON responses
+- Application exceptions caught in exception handlers and converted to JSON: status 400 for application errors, 422 for validation, 500 for unexpected
 
-- **Example patterns from codebase:**
-  - `logger.info(f"Chat request received - User: {current_user_id}, Agent: {payload.agent_type}")` - structured context in message
-  - `logger.error(f"Agent service missing 'send_message' method. Available methods: {dir(self.agent_service)}")` - helpful debug info
-  - `logger.warning(f"Response object missing 'message' attribute. Response: {response}")` - unexpected but non-fatal
-  - Avoid logging sensitive data (passwords, full tokens)
+**No try-except without value:**
+Async operations wrapped in try-except with logging:
+```python
+try:
+    response = await self.agent_service.send_message(...)
+except Exception as e:
+    logger.error(f"Error in send_message: {e}", exc_info=True)
+    raise
+```
+
+## Logging
+
+**Framework:** Standard `logging` module with `logging.getLogger(__name__)`
+
+**Patterns:**
+- Every module imports logger at top: `logger = logging.getLogger(__name__)`
+- Log levels used:
+  - `logger.info()` — entry points, completed operations, state changes
+  - `logger.warning()` — recoverable issues, fallbacks: `logger.warning(f"Crisis detected for user {user_id}")`
+  - `logger.error()` — exceptions with `exc_info=True` for stack traces: `logger.error(f"Error: {e}", exc_info=True)`
+  - `logger.debug()` — low-level operations (rarely used)
+
+**Logging in specific areas:**
+- Services: log initialization, method entry, important decisions
+- Use cases: log operation start with user context, result state, token usage
+- Middleware: log request/response, errors with stack traces
+- Repositories: log query execution, returned results count
+- Example: `logger.info(f"AgentChatUseCase.execute called - User: {user_id}, Agent: {agent_type}")`
+
+**CloudWatch integration:**
+Backend error logging to CloudWatch when enabled:
+```python
+if settings.mobile_logs_enabled:
+    cw = CloudWatchLogger()
+    cw.put_events(user_hash, [{'event': 'backend.error', ...}])
+```
 
 ## Comments
 
 **When to Comment:**
-- Module/file level: Always include docstring explaining the module's purpose, located immediately after opening (see all modules in codebase)
-- Classes: Include docstring after class declaration explaining the class purpose and usage
-- Complex business logic: Comment non-obvious logic that implements business rules
-- Public methods: Include docstring explaining parameters, return type, and exceptions raised
-- Private methods: Docstring optional but recommended
-- TODO/FIXME: Acceptable but should reference specific issues or include context
-- Avoid commenting obvious code: `x = x + 1  # increment x` is unnecessary
+- Module-level docstrings required for all files explaining purpose
+- Complex business logic that isn't obvious from code structure
+- Rationale for workarounds or unusual patterns
+- NOT for obvious code: `user.activate()` doesn't need comment
 
-**Docstring/TSDoc:**
-- Use triple-quoted strings `"""..."""` for all module, class, and method docstrings
-- Format: Describe what the function does, then parameter details if complex:
-  ```python
-  def update_profile(self, profile_data: Dict[str, Any]) -> None:
-      """Update user profile with business validation"""
-  ```
-- Return type in signature (`:` after parameters, `->` for return type)
-- No structured @param/@return blocks observed; keep docstrings concise
+**JSDoc/TSDoc:**
+Not used in this Python codebase. Use descriptive docstrings at module and class level only:
+```python
+"""
+Core User domain entity with business logic
+"""
+```
+
+**Docstring style:**
+Triple-quoted module docstrings at file start:
+```python
+"""
+Entity/Service name
+
+One-line summary.
+
+Longer explanation if complex.
+"""
+```
 
 ## Function Design
 
-**Size:**
-- Typical functions 20-50 lines observed
-- Use-case execution methods can be longer (80+ lines) if logically coherent
-- Prefer breaking complex logic into helper functions (private `_` functions)
+**Size:** Keep functions under 50 lines. Larger operations split into helper methods.
 
 **Parameters:**
-- Type hints required: `def get_by_id(self, user_id: UUID) -> Optional[User]:`
-- Use dataclasses/DTO objects for multiple related parameters rather than individual params
-- Optional parameters with defaults at end: `agent_type: str = "therapy"`
-- Domain entities passed as parameters, not IDs when possible
+- Use dataclasses (DTOs) for multiple related parameters instead of `**kwargs`
+- Dependency injection via constructor (`__init__`), not function parameters
+- Optional parameters use `Optional[]` with `None` defaults
+- UUID fields always typed as `UUID`, never strings
 
 **Return Values:**
-- Explicit return type hints required
-- Return domain entities from repositories, not ORM models
-- Return DTOs from routers, not domain entities or ORM models
-- Use `Optional[T]` for nullable returns
-- Consider returning tuples for multiple related values: `(user, is_new: bool)`
+- Return DTOs/value objects, never raw dictionaries from public methods
+- Methods like `to_dict()` convert to dictionaries for API serialization
+- Async methods always return awaitable results
+
+**Example async pattern:**
+```python
+async def execute(self, user_id: UUID, message: str) -> ChatResponse:
+    try:
+        response = await self.agent_service.send_message(user_id, agent_type, message)
+        return response
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise
+```
 
 ## Module Design
 
 **Exports:**
-- Router modules export a router object: `router = APIRouter(prefix="/chat")`
-- Service modules export class definitions; instantiation in container
-- Repository modules export class definitions only
-- No `__all__` patterns observed; all public-facing classes/functions are implicitly exported
+- Only interfaces and main classes exported from module `__init__.py` files
+- Use `from .module_name import ClassName` not `from . import *`
 
 **Barrel Files:**
-- Observed in `src/presentation/api/routers/__init__.py`: aggregates router imports for convenient loading
-- Used in `src/application/[feature]/__init__.py`: sometimes empty, sometimes re-exports
-- Pattern: import routers/services and make available from single import: `from .chat_router import router as chat_router`
-
-## Async Patterns
-
-**Consistency:** All database and service calls are `async def`; no synchronous blocking calls in async handlers.
-
-**Function signatures:**
+Routers explicitly imported in `src/presentation/api/routers/__init__.py`:
 ```python
-async def execute(self, user_id: UUID, ...) -> Any:
-    # all awaits inside
-    result = await some_async_service.call()
-    return result
+from .auth import router as auth_router
+from .chat import router as chat_router
 ```
 
-**Dependency injection:**
-```python
-async def some_endpoint(
-    current_user_id: UUID = Depends(get_current_user_id),
-    container: ApplicationContainer = Depends(get_container)
-):
-    # both Depends() work in async endpoints
-```
+**Layered structure:**
+- `domain/` — business logic only, no framework imports
+- `application/` — use cases, DTOs, service interfaces
+- `infrastructure/` — implementations (SQLAlchemy, Redis, OpenAI), database models
+- `presentation/` — FastAPI routers, middleware, dependency injection
 
-## Value Objects
-
-**Immutability:** Use `@dataclass(frozen=True)` for value objects:
-```python
-@dataclass(frozen=True)
-class ChatRequest:
-    user_id: UUID
-    message: str
-```
-
-**Validation:** Implement in `__post_init__()` for dataclass validation:
-```python
-def __post_init__(self):
-    if not self.message or len(self.message.strip()) == 0:
-        raise ValueError("Message cannot be empty")
-```
-
-## Domain Layer (No Framework Imports)
-
-**Critical rule:** `src/domain/` must never import FastAPI, SQLAlchemy, Pydantic, or LangChain
-
-**What's allowed:**
-- Python standard library
-- Domain value objects and entities
-- Abstract base classes and protocols
-- Custom exception classes (in domain)
-
-**Example violation to avoid:**
-```python
-# WRONG - in src/domain/entities/user.py:
-from sqlalchemy import Column, String  # ← NO
-from fastapi import HTTPException       # ← NO
-
-# CORRECT:
-from dataclasses import dataclass
-from typing import Optional
-```
+**No circular imports:**
+Dependency flows upward only: `presentation` → `infrastructure` → `application` → `domain`. Never reversed.
 
 ---
 
