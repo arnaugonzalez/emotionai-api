@@ -18,3 +18,11 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "@(abc\\.)?abstractmethod",
+    "if not hasattr\\(self",       # unreachable __post_init__ guard on frozen dataclasses
+    "object\\.\\__setattr__",      # frozen dataclass attribute setting in __post_init__
+    "import uuid",                 # inline imports inside __post_init__
+]
