@@ -255,10 +255,13 @@ Each learning doc must follow this structure:
 - [ ] `docs/learning/ai_readiness_audit.md` written: what was found, what was fixed, what must be addressed before M3
 
 **Depends on:** m2s3 (OpenTelemetry Tracing)
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 01 to break down)
+- [ ] 01-01-PLAN.md — Code cleanup: consolidate tagging service, auth dedup, dead file removal
+- [ ] 01-02-PLAN.md — Repository stub implementations: emotional, breathing, analytics, events + tests
+- [ ] 01-03-PLAN.md — pgvector schema prep: docker-compose image swap, migration, ORM columns
+- [ ] 01-04-PLAN.md — AI readiness audit document: personalization gaps, embedding readiness, M3 prereqs
 
 ---
 
