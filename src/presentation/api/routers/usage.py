@@ -14,7 +14,8 @@ from ....infrastructure.container import ApplicationContainer
 from ....infrastructure.config.settings import settings
 from ....infrastructure.database.models import TokenUsageModel
 from sqlalchemy import extract, func, select
-from .deps import get_current_user_id, get_container
+from .deps import get_container
+from ...dependencies import get_current_user_id
 
 logger = logging.getLogger(__name__)
 

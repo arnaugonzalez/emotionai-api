@@ -15,7 +15,8 @@ from sqlalchemy import select, and_, cast, String
 
 from passlib.context import CryptContext
 
-from .deps import get_container, get_current_user_id
+from .deps import get_container
+from ...dependencies import get_current_user_id
 from ....infrastructure.container import ApplicationContainer
 from ....infrastructure.database.models import EmotionalRecordModel, CustomEmotionModel
 from ....infrastructure.tasks.notification_tasks import notify_new_record

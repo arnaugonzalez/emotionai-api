@@ -15,7 +15,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ....infrastructure.config.settings import settings
 from ....infrastructure.container import ApplicationContainer
-from .deps import get_container, get_current_user_id
+from .deps import get_container
+from ...dependencies import get_current_user_id
 from ....infrastructure.database.models import UserModel
 from sqlalchemy import select
 from passlib.context import CryptContext
