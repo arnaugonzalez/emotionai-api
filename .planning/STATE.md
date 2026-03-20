@@ -16,7 +16,7 @@ progress:
 ## Current Position
 
 Phase: 01 (Architecture Clearance and AI Readiness Audit) — IN PROGRESS
-Plan: 1 of 4 complete
+Plan: 3 of 4 complete
 
 ## Phase Progress
 
@@ -30,7 +30,7 @@ Plan: 1 of 4 complete
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
-| 01 | Architecture Clearance and AI Readiness Audit | ◑ In Progress (1/4 plans done) |
+| 01 | Architecture Clearance and AI Readiness Audit | ◑ In Progress (3/4 plans done) |
 
 ## Accumulated Context
 
@@ -123,6 +123,9 @@ Plan: 1 of 4 complete
 - [Phase 01-01]: feature-scoped src/application/tagging/services/tagging_service.py is now canonical ITaggingService interface; root-level src/application/services/tagging_service.py deleted
 - [Phase 01-01]: OTEL span (emotionai.tagging.classify) ported to src/infrastructure/tagging/services/openai_tagging_service.py; old src/infrastructure/services/openai_tagging_service.py deleted
 - [Phase 01-01]: get_current_user_id imported directly from src.presentation.dependencies in all routers and main.py; deps.py wrapper removed
+- [Phase 01-03]: Vector(1536) dimension matches OpenAI text-embedding-ada-002; columns nullable=True until M3 embedding pipeline populates them
+- [Phase 01-03]: BreathingSessionModel excluded from embedding columns — only messages and emotional_records need semantic search
+- [Phase 01-03]: ORM migration test uses model metadata inspection to avoid SQLite/pgvector incompatibility in test fixtures
 
 ## Issues / Blockers
 
@@ -130,4 +133,4 @@ Plan: 1 of 4 complete
 
 ## Last Updated
 
-2026-03-20T00:00:00Z — Completed 01-01-PLAN.md; phase 01 plan 1 of 4 done
+2026-03-20T00:00:00Z — Completed 01-03-PLAN.md; phase 01 plan 3 of 4 done
