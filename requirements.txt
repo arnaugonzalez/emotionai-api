@@ -33,6 +33,7 @@ opentelemetry-instrumentation-httpx>=0.46b0
 
 # Vector database support
 chromadb>=0.4.0
+pgvector>=0.4.0  # SQLAlchemy Vector type for embedding columns
 
 # Development dependencies (optional)
 pytest>=7.4.0
