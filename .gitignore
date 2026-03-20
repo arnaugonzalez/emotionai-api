@@ -243,7 +243,9 @@ charts/*/requirements.lock
 
 # tmp files
 */.tmp/
-
+.tmp/
 # Uppercase underscore Markdown files (except README.md)
 [A-Z0-9]*_[A-Z0-9_]*.md
+[A-Z0-9]*.md
+
 !README.md
