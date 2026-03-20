@@ -2,23 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: m2s2 — Celery + Redis Task Queue
-status: completed
-last_updated: "2026-03-19T19:03:27.650Z"
+status: unknown
+last_updated: "2026-03-19T19:39:13.424Z"
 progress:
-  total_phases: 8
-  completed_phases: 7
-  total_plans: 12
-  completed_plans: 10
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State
 
 ## Current Position
 
-**Milestone:** 2 — Observability and async task infrastructure
-**Current Phase:** m2s2 — Celery + Redis Task Queue
-**Status:** m2s2-03 complete; ready to plan/execute m2s3
+Phase: m2s3 (OpenTelemetry Tracing) — COMPLETE
+Plan: 2 of 2 (all plans done)
 
 ## Phase Progress
 
@@ -31,14 +29,17 @@ progress:
 | m2s1 | Prometheus Instrumentation | ● Complete (1/1 plan done) |
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
-| m2s3 | OpenTelemetry Tracing | ○ Pending (0/2 plans done) |
+| m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
 - Phase m2s1.1 inserted after Phase m2s1: Improve `scripts/demo_flow.sh` each feature/tool to harden E2E learning path (metrics now, telemetry next) (URGENT)
+- Phase 01 added (pre-M3 clearance): architecture audit — endpoint review, simplification, redundancy removal, data management improvements, and AI readiness assessment for personalization and chat data gathering
 
 ### Codebase Facts
+
 - Python 3.11, FastAPI, asyncpg, SQLAlchemy 2.0
 - Clean Architecture: domain → application → infrastructure → presentation
 - Composition root: `src/infrastructure/container.py` (ApplicationContainer)
@@ -57,6 +58,7 @@ progress:
 - deps.py (src/presentation/api/routers/deps.py) is clean — no hardcoded UUID bypass; uses JWT via src/presentation/dependencies.py
 
 ### Key Files
+
 - `src/infrastructure/container.py` — DI root, mock factory should mirror its interface
 - `src/domain/entities/user.py`, `src/domain/entities/agent_personality.py`
 - `src/domain/value_objects/user_profile.py`
@@ -73,8 +75,12 @@ progress:
 - `scripts/demo_steps/10_metrics.sh`
 - `scripts/demo_steps/20_celery.sh`
 - `scripts/demo_steps/30_otel.sh`
+- `src/infrastructure/telemetry/tracing.py` — setup_tracing() and get_tracer() factory
+- Jaeger all-in-one:1.76.0 added to docker-compose on ports 4318 (OTLP) and 16686 (UI)
+- OTEL wired in main.py lifespan before initialize_container(); FastAPIInstrumentor.instrument_app() in create_application()
 
 ### Decisions Made
+
 - No fail_under threshold in coverage config until slice 1.2 (domain tests) ships
 - Learning doc (pytest_fastapi.md) grows with slices — stub in 1.1, TestClient section in 1.4, mocking in 1.3
 - asyncio_mode = auto in pytest config
@@ -108,10 +114,16 @@ progress:
 - [Phase m2s2-celery-redis-task-queue]: Used the roadmap worker command inside timeout-driven docker smoke instead of import-only checks.
 - [Phase m2s2-celery-redis-task-queue]: Enabled Celery task events and Flower unauthenticated API access so verification can assert task SUCCESS programmatically.
 - [Phase m2s2-celery-redis-task-queue]: Switched smoke-path password hashing to pbkdf2_sha256 because the existing bcrypt setup blocked runtime registration in this environment.
+- [Phase m2s3]: setup_tracing() called before initialize_container() in lifespan so AsyncPGInstrumentor patches the driver before any DB connections are created
+- [Phase m2s3]: OTLPSpanExporter appends /v1/traces internally — caller passes base URL only
+- [Phase m2s3]: FastAPIInstrumentor excludes /health and /metrics to prevent probe traffic from polluting traces
+- [Phase m2s3]: Inject test provider tracer directly onto service._tracer instance rather than swapping global TracerProvider
+- [Phase m2s3]: emotionai.chat.llm_generate span wraps entire send_message body — parent span captures total LLM work time including context build
 
 ## Issues / Blockers
 
 - Full regression suite still exits non-zero because three pre-existing `XPASS(strict)` domain tests now pass unexpectedly in `tests/domain/test_user.py`. These were carried forward from Milestone 1 and are not regressions from m2s1.
 
 ## Last Updated
-2026-03-19T19:03:27Z — Completed m2s2-03-PLAN.md; next target is m2s3 planning/execution
+
+2026-03-19T19:33:57Z — Completed m2s3-02-PLAN.md; phase m2s3 complete

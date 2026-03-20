@@ -14,13 +14,16 @@ from ...domain.chat.entities import AgentContext, TherapyResponse, Conversation,
 from ...domain.chat.interfaces import IAgentConversationRepository
 from ...domain.users.interfaces import IUserRepository
 from ...domain.records.interfaces import IEmotionalRecordRepository
+from ...infrastructure.telemetry.tracing import get_tracer
 
 logger = logging.getLogger(__name__)
 
 
 class LangChainAgentService(IAgentService):
+    _tracer = get_tracer(__name__)
+
     def __init__(
-        self, 
+        self,
         llm_service: ILLMService,
         conversation_repository: IAgentConversationRepository,
         user_repository: IUserRepository,
@@ -35,63 +38,70 @@ class LangChainAgentService(IAgentService):
         logger.info("LangChainAgentService initialized with real LLM and memory")
 
     async def send_message(
-        self, 
-        user_id: UUID, 
-        agent_type: str, 
-        message: str, 
+        self,
+        user_id: UUID,
+        agent_type: str,
+        message: str,
         context: Dict[str, Any]
     ) -> TherapyResponse:
         """Send a message to the agent and get a therapeutic response with memory"""
         logger.info(f"LangChainAgentService.send_message called - User: {user_id}, Agent: {agent_type}, Message: {message[:50]}...")
-        
-        try:
-            # 1. Get or create active conversation
-            conversation_id = await self._get_or_create_conversation(user_id, agent_type)
-            
-            # 2. Store user message
-            user_message = await self.conversation_repository.add_message(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                content=message,
-                message_type="user",
-                metadata={"emotional_context": context.get("emotional_state")}
-            )
-            
-            # 3. Build agent context with memory
-            agent_context = await self._build_agent_context(
-                user_id, agent_type, conversation_id, message
-            )
-            
-            # 4. Generate therapeutic response using LLM
-            therapy_response = await self.llm_service.generate_therapy_response(
-                agent_context, message
-            )
-            
-            # 5. Store assistant response
-            await self.conversation_repository.add_message(
-                conversation_id=conversation_id,
-                user_id=user_id,
-                content=therapy_response.message,
-                message_type="assistant",
-                metadata={
-                    "therapeutic_approach": therapy_response.therapeutic_approach,
-                    "emotional_tone": therapy_response.emotional_tone,
-                    "crisis_detected": therapy_response.crisis_detected
-                }
-            )
-            
-            # 6. Update conversation metadata
-            if therapy_response.crisis_detected:
-                logger.warning(f"Crisis detected for user {user_id} in {agent_type} session")
-                # TODO: Implement crisis response protocol
-            
-            logger.info(f"Therapy response generated successfully: {therapy_response.therapeutic_approach}")
-            return therapy_response
-            
-        except Exception as e:
-            logger.error(f"Error in send_message: {e}", exc_info=True)
-            # Return fallback response
-            return await self._create_fallback_response(user_id, agent_type, message)
+
+        with self._tracer.start_as_current_span("emotionai.chat.llm_generate") as span:
+            span.set_attribute("user.id", str(user_id))
+            span.set_attribute("llm.model", "gpt-4")
+            span.set_attribute("chat.agent_type", agent_type)
+
+            try:
+                # 1. Get or create active conversation
+                conversation_id = await self._get_or_create_conversation(user_id, agent_type)
+
+                # 2. Store user message
+                user_message = await self.conversation_repository.add_message(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    content=message,
+                    message_type="user",
+                    metadata={"emotional_context": context.get("emotional_state")}
+                )
+
+                # 3. Build agent context with memory
+                agent_context = await self._build_agent_context(
+                    user_id, agent_type, conversation_id, message
+                )
+
+                # 4. Generate therapeutic response using LLM
+                therapy_response = await self.llm_service.generate_therapy_response(
+                    agent_context, message
+                )
+
+                # 5. Store assistant response
+                await self.conversation_repository.add_message(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    content=therapy_response.message,
+                    message_type="assistant",
+                    metadata={
+                        "therapeutic_approach": therapy_response.therapeutic_approach,
+                        "emotional_tone": therapy_response.emotional_tone,
+                        "crisis_detected": therapy_response.crisis_detected
+                    }
+                )
+
+                # 6. Update conversation metadata
+                if therapy_response.crisis_detected:
+                    logger.warning(f"Crisis detected for user {user_id} in {agent_type} session")
+                    span.set_attribute("crisis_detected", True)
+                    # TODO: Implement crisis response protocol
+
+                span.set_attribute("chat.therapeutic_approach", therapy_response.therapeutic_approach)
+                logger.info(f"Therapy response generated successfully: {therapy_response.therapeutic_approach}")
+                return therapy_response
+
+            except Exception as e:
+                logger.error(f"Error in send_message: {e}", exc_info=True)
+                # Return fallback response
+                return await self._create_fallback_response(user_id, agent_type, message)
 
     async def _get_or_create_conversation(
         self, 

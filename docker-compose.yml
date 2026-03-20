@@ -44,11 +44,15 @@ services:
       - ENVIRONMENT=development
       - DEBUG=true
       - CORS_ORIGINS=["*"]
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_ENABLED=true
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     volumes:
       - .:/app
     networks:
@@ -116,6 +120,16 @@ services:
     depends_on:
       - redis
       - celery_worker
+    networks:
+      - emotionai-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    ports:
+      - "16686:16686"   # Jaeger UI — browse traces at http://localhost:16686
+      - "4318:4318"     # OTLP HTTP receiver — API sends spans here
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true   # Defensive: default in Jaeger 1.35+, kept for compatibility
     networks:
       - emotionai-network
 

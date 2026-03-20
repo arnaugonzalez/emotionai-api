@@ -242,6 +242,27 @@ Each learning doc must follow this structure:
 | Mock similarity search stub (P2) | 3.1 | mock_similarity_search_service.py |
 | dependency-injector unused (P1) | 1.1 | requirements.txt |
 
+### Phase 01: Architecture Clearance and AI Readiness Audit
+
+**Goal:** Audit every endpoint and service for architecture improvements, remove redundancies, simplify data management, and assess readiness for M3 AI personalization and chat data gathering features. Final cleanup gate before the AI Engineering milestone.
+
+**Success criteria (verifiable):**
+- [ ] All endpoints reviewed — dead routes removed or documented, response shapes consistent
+- [ ] Redundant service calls and duplicated logic identified and consolidated
+- [ ] Data management reviewed: ORM queries, N+1 risks, unnecessary DB round-trips flagged
+- [ ] Chat and emotional record data pipelines assessed for embedding readiness (pgvector M3 prerequisite)
+- [ ] Personalization hooks identified: where user profile context is consumed, what's missing
+- [ ] `docs/learning/ai_readiness_audit.md` written: what was found, what was fixed, what must be addressed before M3
+
+**Depends on:** m2s3 (OpenTelemetry Tracing)
+**Plans:** 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Code cleanup: consolidate tagging service, auth dedup, dead file removal
+- [ ] 01-02-PLAN.md — Repository stub implementations: emotional, breathing, analytics, events + tests
+- [ ] 01-03-PLAN.md — pgvector schema prep: docker-compose image swap, migration, ORM columns
+- [ ] 01-04-PLAN.md — AI readiness audit document: personalization gaps, embedding readiness, M3 prereqs
+
 ---
 
 ## How to start with GSD

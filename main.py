@@ -10,6 +10,8 @@ import uvicorn
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 from prometheus_fastapi_instrumentator import Instrumentator
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from src.infrastructure.telemetry.tracing import setup_tracing
 from src import __version__ as app_version
 from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +58,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting EmotionAI API...")
     
     try:
+        # Initialize distributed tracing — must run before initialize_container()
+        # so AsyncPGInstrumentor patches the driver before any connections are created
+        setup_tracing(
+            service_name=settings.otel_service_name,
+            service_version=app_version,
+            environment=settings.environment,
+            otlp_endpoint=settings.otel_endpoint,
+            enabled=settings.otel_enabled,
+        )
+
         # Initialize container with settings
         container = await initialize_container(settings.__dict__)
         
@@ -79,6 +91,12 @@ async def lifespan(app: FastAPI):
         logger.info("Shutting down EmotionAI API...")
         
         try:
+            # Flush any pending spans before shutdown
+            from opentelemetry import trace as otel_trace
+            provider = otel_trace.get_tracer_provider()
+            if hasattr(provider, "shutdown"):
+                provider.shutdown()
+
             await shutdown_container()
             logger.info("Application shutdown completed successfully")
         except Exception as e:
@@ -136,7 +154,14 @@ def create_application() -> FastAPI:
         .instrument(app)
     )
     app.state.instrumentator = instrumentator
-    
+
+    # FastAPI auto-instrumentation — captures all HTTP spans automatically
+    # Exclude /health and /metrics to avoid polluting traces with probe traffic
+    FastAPIInstrumentor.instrument_app(
+        app,
+        excluded_urls="health,metrics",
+    )
+
     # Add exception handlers
     add_exception_handlers(app)
     
