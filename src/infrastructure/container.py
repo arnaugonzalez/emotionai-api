@@ -78,6 +78,7 @@ class ApplicationContainer:
     
     # Services
     agent_service: IAgentService
+    celery_app: Any
     event_bus: IEventBus
     tagging_service: ITaggingService
     user_knowledge_service: IUserKnowledgeService
@@ -98,6 +99,7 @@ class ApplicationContainer:
         """
         
         logger.info("Initializing application container...")
+        from .tasks.worker import celery_app
         
         # 1. Load settings
         settings = Settings(config_overrides or {})
@@ -189,6 +191,7 @@ class ApplicationContainer:
             event_repository=event_repository,
             analytics_repository=analytics_repository,
             agent_service=agent_service,
+            celery_app=celery_app,
             event_bus=event_bus,
             tagging_service=tagging_service,
             user_knowledge_service=user_knowledge_service,
