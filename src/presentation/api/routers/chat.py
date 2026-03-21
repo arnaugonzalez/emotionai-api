@@ -11,7 +11,8 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, field_serializer, Field
+from typing import Literal
 from uuid import uuid4
 from fastapi.security import HTTPBearer
 
@@ -35,9 +36,16 @@ logger = logging.getLogger(__name__)
 
 
 class ChatApiRequest(BaseModel):
-    agent_type: Optional[str] = "therapy"
-    message: str
+    agent_type: Literal["therapy", "wellness"] = "therapy"
+    message: str = Field(..., min_length=1, max_length=700)
     context: Optional[Dict[str, Any]] = None
+
+    @field_validator("message")
+    @classmethod
+    def message_not_whitespace(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Message cannot be empty or whitespace")
+        return v
 
 
 class ChatApiResponse(BaseModel):
@@ -45,7 +53,11 @@ class ChatApiResponse(BaseModel):
     agent_type: str
     conversation_id: Optional[str] = None
     suggestions: List[str] = []
-    timestamp: str
+    timestamp: datetime
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, v: datetime) -> str:
+        return v.isoformat()
 
 
 @router.post("/chat", response_model=ChatApiResponse, summary="Send message to agent")
@@ -61,11 +73,6 @@ async def chat_with_agent(
 
     with active_users_gauge.track_inprogress():
         try:
-            # Validate message length (limit to 700 chars from our side)
-            if payload.message is None or len(payload.message) == 0:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
-            if len(payload.message) > 700:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message must be at most 700 characters")
             # Get the agent chat use case from container
             chat_use_case: AgentChatUseCase = container.agent_chat_use_case
             logger.info("Agent chat use case retrieved successfully")
@@ -104,7 +111,7 @@ async def chat_with_agent(
                         agent_type=response['agent_type'],
                         conversation_id=(response.get('conversation_id') or f"conv_{uuid4()}"),
                         suggestions=[],
-                        timestamp=(response.get('timestamp') or "")
+                        timestamp=(response.get('timestamp') or datetime.now(timezone.utc))
                     )
                 elif hasattr(response, 'message') and hasattr(response, 'agent_type'):
                     # Handle TherapyResponse object
@@ -113,7 +120,7 @@ async def chat_with_agent(
                         agent_type=response.agent_type,
                         conversation_id=response.conversation_id,
                         suggestions=response.follow_up_suggestions if hasattr(response, 'follow_up_suggestions') else [],
-                        timestamp=response.timestamp.isoformat() if response.timestamp else datetime.now(timezone.utc).isoformat()
+                        timestamp=response.timestamp if response.timestamp else datetime.now(timezone.utc)
                     )
 
                     # Log therapeutic approach for debugging
