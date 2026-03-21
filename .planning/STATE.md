@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-21T17:33:30.596Z"
+last_updated: "2026-03-21T17:33:37.805Z"
 progress:
   total_phases: 2
   completed_phases: 1
@@ -132,6 +132,10 @@ Plan: 4 of 4
 - [Phase 02-02]: Union[List[str], str] for trusted_hosts bypasses pydantic-settings v2 JSON-decode path for comma-separated env vars
 - [Phase 02-02]: model_config = SettingsConfigDict(...) replaces inner class Config — idiomatic pydantic-settings v2 pattern
 - [Phase 02-02]: _safe_model_to_dict shim removed from profile router; .model_dump() used directly throughout
+- [Phase 02-01]: ValidationError (pydantic) replaces ValueError (__post_init__) — FastAPI maps ValidationError to HTTP 422 with field-level detail automatically
+- [Phase 02-01]: model_dump() replaces all manual to_dict() methods — Pydantic handles serialization
+- [Phase 02-01]: ChatApiResponse.timestamp changed from str to datetime + @field_serializer — avoids manual isoformat() scattered across callers
+- [Phase 02-01]: Ad-hoc HTTPException checks for message length removed from route handler — validation boundary moved to model definition
 
 ## Issues / Blockers
 
