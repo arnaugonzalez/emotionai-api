@@ -5,27 +5,28 @@ Centralized configuration management for the clean architecture.
 Settings are loaded from environment variables and configuration files.
 """
 
-from pydantic_settings import BaseSettings
-from typing import Optional, Dict, Any, List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional, Dict, Any, List, Union
 import os
 from pydantic import Field, field_validator
 from src import __version__ as app_version
 
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
-    
+
+    model_config = SettingsConfigDict(
+        env_file=".env" if os.getenv("ENVIRONMENT", "development") == "development" else "/etc/emotionai-api.env",
+        case_sensitive=False,
+        env_prefix="",
+        extra="ignore",
+    )
+
     # Application
     app_name: str = "EmotionAI FastAPI"
     debug: bool = False
     version: str = app_version
     environment: str = Field(default="development", env="ENVIRONMENT")
-    
-    class Config:
-        env_file = ".env" if os.getenv("ENVIRONMENT", "development") == "development" else "/etc/emotionai-api.env"
-        case_sensitive = False
-        env_prefix = ""
-        extra = "ignore"  # Ignore extra fields instead of raising errors
-    
+
     # Database
     database_url: Optional[str] = Field(None, env="DATABASE_URL")
     async_database_url: Optional[str] = Field(None, env="ASYNC_DATABASE_URL")
@@ -91,7 +92,7 @@ class Settings(BaseSettings):
     
     # Security
     cors_origins: List[str] = Field(default_factory=lambda: ["*"], env="CORS_ORIGINS")
-    trusted_hosts: List[str] = Field(default_factory=lambda: ["*"], env="TRUSTED_HOSTS")
+    trusted_hosts: Union[List[str], str] = Field(default_factory=lambda: ["*"], env="TRUSTED_HOSTS")
     enable_https_redirect: bool = False
 
     # EC2
