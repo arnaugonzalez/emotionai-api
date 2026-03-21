@@ -22,23 +22,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/profile", tags=["profile"], redirect_slashes=False) 
 
 
-def _safe_model_to_dict(obj):
-	"""Serialize Pydantic model (v1 or v2) or dict-like objects for logging."""
-	try:
-		# Pydantic v2
-		return obj.model_dump()
-	except AttributeError:
-		try:
-			# Pydantic v1
-			return obj.dict()
-		except Exception:
-			try:
-				# Already a dict or JSON-serializable
-				return dict(obj)
-			except Exception:
-				return str(obj)
-
-
 @router.get("/", response_model=UserProfileResponse)
 @router.get("", response_model=UserProfileResponse)
 async def get_profile(
@@ -75,7 +58,7 @@ async def create_profile(
 	user_id: UUID = Depends(get_current_user_id)
 ):
 	"""Create or update user profile"""
-	payload = _safe_model_to_dict(profile_data)
+	payload = profile_data.model_dump()
 	try:
 		logger.info(f"[Profile:Create] Creating/updating profile for user_id={user_id}")
 		logger.debug(f"[Profile:Create] Payload for user_id={user_id}: {payload}")
@@ -100,7 +83,7 @@ async def update_profile(
 	profile_service: IProfileService = Depends(get_profile_service)
 ) -> UserProfileResponse:
 	"""Update existing user profile"""
-	payload = _safe_model_to_dict(profile_data)
+	payload = profile_data.model_dump()
 	try:
 		logger.info(f"[Profile:Update] Updating profile for user_id={current_user_id}")
 		logger.debug(f"[Profile:Update] Payload for user_id={current_user_id}: {payload}")
@@ -176,7 +159,7 @@ async def update_therapy_context(
 	user_id: UUID = Depends(get_current_user_id)
 ):
 	"""Update therapy context and AI insights"""
-	payload = _safe_model_to_dict(context_data)
+	payload = context_data.model_dump()
 	try:
 		logger.info(f"[Profile:Context:Update] Updating therapy context for user_id={user_id}")
 		logger.debug(f"[Profile:Context:Update] Payload for user_id={user_id}: {payload}")

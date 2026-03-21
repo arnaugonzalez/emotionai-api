@@ -1,8 +1,8 @@
 """Profile DTOs for user profile management and therapy context"""
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, EmailStr
+from typing import ClassVar, Optional, Dict, Any, List, Self
+from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator, ConfigDict
 
 
 class EmergencyContact(BaseModel):
@@ -22,10 +22,22 @@ class MedicalInfo(BaseModel):
 
 class TherapyPreferences(BaseModel):
     """User's therapy preferences"""
+    ALLOWED_COMMUNICATION_STYLES: ClassVar[List[str]] = [
+        "supportive", "direct", "analytical", "casual", "formal"
+    ]
+
     communication_style: Optional[str] = Field(None, description="Preferred communication style")
     session_frequency: Optional[str] = Field(None, description="Preferred session frequency")
     focus_areas: List[str] = Field(default_factory=list, description="Areas of focus")
     goals: Optional[str] = Field(None, description="Therapy goals")
+
+    @field_validator("communication_style")
+    @classmethod
+    def validate_communication_style(cls, v: Optional[str]) -> Optional[str]:
+        allowed = ["supportive", "direct", "analytical", "casual", "formal"]
+        if v is not None and v not in allowed:
+            raise ValueError(f"communication_style must be one of: {allowed}")
+        return v
 
 
 class UserProfileRequest(BaseModel):
@@ -43,9 +55,22 @@ class UserProfileRequest(BaseModel):
     user_profile_data: Optional[Dict[str, Any]] = Field(None, description="Additional profile data (personality type, preferences, etc.)")
     terms_accepted: Optional[bool] = Field(None, description="Whether user accepted terms")
 
+    @model_validator(mode='after')
+    def at_least_one_field_provided(self) -> Self:
+        fields_to_check = [
+            'first_name', 'last_name', 'username', 'date_of_birth',
+            'phone_number', 'address', 'occupation', 'emergency_contact',
+            'medical_info', 'therapy_preferences', 'user_profile_data', 'terms_accepted'
+        ]
+        if all(getattr(self, f) is None for f in fields_to_check):
+            raise ValueError("At least one profile field must be provided")
+        return self
+
 
 class UserProfileResponse(BaseModel):
     """User profile response"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str = Field(..., description="User ID")
     email: str = Field(..., description="Email address")
     username: Optional[str] = Field(None, description="Username")
@@ -87,3 +112,10 @@ class ProfileStatusResponse(BaseModel):
     profile_completeness: float = Field(..., description="Profile completeness percentage (0-100)")
     missing_fields: List[str] = Field(default_factory=list, description="Missing required fields")
     last_updated: Optional[datetime] = Field(None, description="Last profile update")
+
+    @field_validator("profile_completeness")
+    @classmethod
+    def completeness_in_range(cls, v: float) -> float:
+        if not (0 <= v <= 100):
+            raise ValueError("profile_completeness must be between 0 and 100")
+        return v
