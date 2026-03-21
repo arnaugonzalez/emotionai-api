@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 
 from ....domain.records.interfaces import IEmotionalRecordRepository
 from ....infrastructure.database.models import EmotionalRecordModel
@@ -76,6 +77,25 @@ class SqlAlchemyEmotionalRepository(IEmotionalRecordRepository):
                 "mood_trends": emotion_counts,
                 "patterns": [],
             }
+
+    async def get_by_user_id_with_user(
+        self,
+        user_id: UUID,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get emotional records with eagerly loaded user (avoids DetachedInstanceError)"""
+        async with self.db.get_session() as session:
+            query = (
+                select(EmotionalRecordModel)
+                .where(EmotionalRecordModel.user_id == user_id)
+                .options(selectinload(EmotionalRecordModel.user))
+                .order_by(EmotionalRecordModel.recorded_at.desc())
+            )
+            if limit is not None:
+                query = query.limit(limit)
+            result = await session.execute(query)
+            rows = result.scalars().all()
+            return [_model_to_dict(r) for r in rows]
 
     async def get_records_by_date_range(self, user_id: UUID, start_date, end_date) -> List[Dict[str, Any]]:
         try:
