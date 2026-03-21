@@ -10,7 +10,8 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
-from .deps import get_container, get_current_user_id
+from .deps import get_container
+from ...dependencies import get_current_user_id
 from ....infrastructure.container import ApplicationContainer
 from ....infrastructure.database.models import CustomEmotionModel
 from ..validators.data_validators import validate_custom_emotion

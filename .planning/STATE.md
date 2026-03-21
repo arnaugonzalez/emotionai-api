@@ -15,8 +15,8 @@ progress:
 
 ## Current Position
 
-Phase: m2s3 (OpenTelemetry Tracing) — COMPLETE
-Plan: 2 of 2 (all plans done)
+Phase: 01 (Architecture Clearance and AI Readiness Audit) — IN PROGRESS
+Plan: 3 of 4 complete
 
 ## Phase Progress
 
@@ -30,6 +30,7 @@ Plan: 2 of 2 (all plans done)
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
+| 01 | Architecture Clearance and AI Readiness Audit | ◑ In Progress (3/4 plans done) |
 
 ## Accumulated Context
 
@@ -119,6 +120,12 @@ Plan: 2 of 2 (all plans done)
 - [Phase m2s3]: FastAPIInstrumentor excludes /health and /metrics to prevent probe traffic from polluting traces
 - [Phase m2s3]: Inject test provider tracer directly onto service._tracer instance rather than swapping global TracerProvider
 - [Phase m2s3]: emotionai.chat.llm_generate span wraps entire send_message body — parent span captures total LLM work time including context build
+- [Phase 01-01]: feature-scoped src/application/tagging/services/tagging_service.py is now canonical ITaggingService interface; root-level src/application/services/tagging_service.py deleted
+- [Phase 01-01]: OTEL span (emotionai.tagging.classify) ported to src/infrastructure/tagging/services/openai_tagging_service.py; old src/infrastructure/services/openai_tagging_service.py deleted
+- [Phase 01-01]: get_current_user_id imported directly from src.presentation.dependencies in all routers and main.py; deps.py wrapper removed
+- [Phase 01-03]: Vector(1536) dimension matches OpenAI text-embedding-ada-002; columns nullable=True until M3 embedding pipeline populates them
+- [Phase 01-03]: BreathingSessionModel excluded from embedding columns — only messages and emotional_records need semantic search
+- [Phase 01-03]: ORM migration test uses model metadata inspection to avoid SQLite/pgvector incompatibility in test fixtures
 
 ## Issues / Blockers
 
@@ -126,4 +133,4 @@ Plan: 2 of 2 (all plans done)
 
 ## Last Updated
 
-2026-03-19T19:33:57Z — Completed m2s3-02-PLAN.md; phase m2s3 complete
+2026-03-20T00:00:00Z — Completed 01-03-PLAN.md; phase 01 plan 3 of 4 done

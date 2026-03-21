@@ -26,7 +26,8 @@ from ....infrastructure.metrics.custom_metrics import (
     chat_requests_total,
     openai_latency_seconds,
 )
-from .deps import get_container, get_current_user_id
+from .deps import get_container
+from ...dependencies import get_current_user_id
 
 router = APIRouter(redirect_slashes=False)
 security = HTTPBearer()

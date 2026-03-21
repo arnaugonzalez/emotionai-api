@@ -16,7 +16,7 @@ from ..infrastructure.container import get_container
 from ..application.services.profile_service import IProfileService
 from ..application.services.agent_service import IAgentService
 from ..application.services.event_bus import IEventBus
-from ..application.services.tagging_service import ITaggingService
+from ..application.tagging.services.tagging_service import ITaggingService
 from ..application.services.user_knowledge_service import IUserKnowledgeService
 from ..application.services.similarity_search_service import ISimilaritySearchService
 

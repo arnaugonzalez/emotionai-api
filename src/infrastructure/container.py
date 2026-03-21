@@ -23,7 +23,7 @@ from ..application.chat.use_cases.agent_chat_use_case import AgentChatUseCase
 from ..application.usage.use_cases.get_monthly_usage_use_case import GetMonthlyUsageUseCase
 from ..application.services.agent_service import IAgentService
 from ..application.services.event_bus import IEventBus
-from ..application.services.tagging_service import ITaggingService
+from ..application.tagging.services.tagging_service import ITaggingService
 from ..application.services.user_knowledge_service import IUserKnowledgeService
 from ..application.services.similarity_search_service import ISimilaritySearchService
 from ..application.services.profile_service import IProfileService
@@ -40,7 +40,7 @@ from .services.langchain_agent_service import LangChainAgentService
 from .services.openai_llm_service import OpenAILLMService
 from .services.anthropic_llm_service import AnthropicLLMService
 from .services.redis_event_bus import RedisEventBus
-from .services.openai_tagging_service import OpenAITaggingService
+from .tagging.services.openai_tagging_service import OpenAITaggingService
 from .usage.repositories.sqlalchemy_token_usage_repository import SqlAlchemyTokenUsageRepository
 from .services.mock_user_knowledge_service import MockUserKnowledgeService
 from .services.mock_similarity_search_service import MockSimilaritySearchService

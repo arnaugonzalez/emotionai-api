@@ -8,7 +8,7 @@ from ....domain.records.interfaces import IEmotionalRecordRepository
 from ....domain.breathing.interfaces import IBreathingSessionRepository
 from ....domain.chat.interfaces import IAgentConversationRepository
 from ....application.services.agent_service import IAgentService
-from ....application.services.tagging_service import ITaggingService
+from ...tagging.services.tagging_service import ITaggingService
 from ....application.services.user_knowledge_service import IUserKnowledgeService
 from ....application.services.similarity_search_service import ISimilaritySearchService
 from ....infrastructure.database.connection import DatabaseConnection

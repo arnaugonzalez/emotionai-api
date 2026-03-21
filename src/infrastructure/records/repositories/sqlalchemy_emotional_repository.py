@@ -1,10 +1,28 @@
 """SQLAlchemy Emotional Record Repository (feature-scoped)"""
 
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from uuid import UUID
+from sqlalchemy import select, and_
+
 from ....domain.records.interfaces import IEmotionalRecordRepository
 from ....infrastructure.database.models import EmotionalRecordModel
-from sqlalchemy import select, and_
+
+
+def _model_to_dict(model: EmotionalRecordModel) -> Dict[str, Any]:
+    return {
+        "id": str(model.id),
+        "user_id": str(model.user_id),
+        "emotion": model.emotion,
+        "intensity": model.intensity,
+        "triggers": model.triggers,
+        "notes": model.notes or "",
+        "recorded_at": model.recorded_at,
+        "tags": model.tags,
+        "tag_confidence": model.tag_confidence,
+        "context_data": model.context_data,
+        "created_at": model.created_at,
+    }
 
 
 class SqlAlchemyEmotionalRepository(IEmotionalRecordRepository):
@@ -17,20 +35,47 @@ class SqlAlchemyEmotionalRepository(IEmotionalRecordRepository):
         limit: Optional[int] = None,
         days_back: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        # TODO: Implement actual database query
-        return []
+        async with self.db.get_session() as session:
+            query = select(EmotionalRecordModel).where(
+                EmotionalRecordModel.user_id == user_id
+            ).order_by(EmotionalRecordModel.recorded_at.desc())
+            if days_back is not None:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+                query = query.where(EmotionalRecordModel.recorded_at >= cutoff)
+            if limit is not None:
+                query = query.limit(limit)
+            result = await session.execute(query)
+            rows = result.scalars().all()
+            return [_model_to_dict(r) for r in rows]
 
     async def save(self, record_data: Dict[str, Any]) -> Dict[str, Any]:
-        # TODO: Implement actual database save
-        return record_data
+        async with self.db.get_session() as session:
+            model = EmotionalRecordModel(**record_data)
+            session.add(model)
+            await session.flush()
+            return _model_to_dict(model)
 
     async def get_emotional_patterns(self, user_id: UUID) -> Dict[str, Any]:
-        # TODO: Implement actual pattern analysis
-        return {
-            "dominant_emotions": [],
-            "mood_trends": {},
-            "patterns": [],
-        }
+        async with self.db.get_session() as session:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            result = await session.execute(
+                select(EmotionalRecordModel)
+                .where(and_(
+                    EmotionalRecordModel.user_id == user_id,
+                    EmotionalRecordModel.recorded_at >= cutoff,
+                ))
+                .order_by(EmotionalRecordModel.recorded_at.desc())
+            )
+            rows = result.scalars().all()
+            emotion_counts: Dict[str, int] = {}
+            for r in rows:
+                emotion_counts[r.emotion] = emotion_counts.get(r.emotion, 0) + 1
+            dominant = sorted(emotion_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            return {
+                "dominant_emotions": [{"emotion": e, "count": c} for e, c in dominant],
+                "mood_trends": emotion_counts,
+                "patterns": [],
+            }
 
     async def get_records_by_date_range(self, user_id: UUID, start_date, end_date) -> List[Dict[str, Any]]:
         try:
@@ -59,5 +104,3 @@ class SqlAlchemyEmotionalRepository(IEmotionalRecordRepository):
                 return records
         except Exception:
             return []
-
-

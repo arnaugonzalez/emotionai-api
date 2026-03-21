@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-from src.infrastructure.services.openai_tagging_service import OpenAITaggingService
+from src.infrastructure.tagging.services.openai_tagging_service import OpenAITaggingService
 
 
 @pytest.fixture

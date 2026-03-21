@@ -40,7 +40,7 @@ from src.presentation.api.middleware import (
     RateLimitingMiddleware
 )
 from src.application.exceptions import ApplicationException
-from src.presentation.api.routers.deps import get_current_user_id
+from src.presentation.dependencies import get_current_user_id
 
 # Configure logging
 logging.basicConfig(

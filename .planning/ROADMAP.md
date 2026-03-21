@@ -258,7 +258,7 @@ Each learning doc must follow this structure:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Code cleanup: consolidate tagging service, auth dedup, dead file removal
+- [x] 01-01-PLAN.md — Code cleanup: consolidate tagging service, auth dedup, dead file removal
 - [ ] 01-02-PLAN.md — Repository stub implementations: emotional, breathing, analytics, events + tests
 - [ ] 01-03-PLAN.md — pgvector schema prep: docker-compose image swap, migration, ORM columns
 - [ ] 01-04-PLAN.md — AI readiness audit document: personalization gaps, embedding readiness, M3 prereqs

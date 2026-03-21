@@ -18,6 +18,8 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
+from pgvector.sqlalchemy import Vector
+
 from .connection import Base
 
 
@@ -198,10 +200,13 @@ class MessageModel(Base):
     tags = Column(JSONB, nullable=True)  # Semantic tags extracted from content
     tag_confidence = Column(Float, nullable=True)  # Confidence in tag extraction
     processed_for_tags = Column(Boolean, default=False, nullable=False)
-    
+
+    # M3 semantic search — nullable until embedding pipeline populates
+    embedding_vector = Column(Vector(1536), nullable=True)
+
     # Timestamps
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     # Relationships
     conversation = relationship("ConversationModel", back_populates="messages")
     
@@ -231,11 +236,14 @@ class EmotionalRecordModel(Base):
     tags = Column(JSONB, nullable=True)  # Semantic tags for emotional context
     tag_confidence = Column(Float, nullable=True)
     processed_for_tags = Column(Boolean, default=False, nullable=False)
-    
+
+    # M3 semantic search — nullable until embedding pipeline populates
+    embedding_vector = Column(Vector(1536), nullable=True)
+
     # Timestamps
     recorded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
+
     # Relationships
     user = relationship("UserModel", back_populates="emotional_records")
     
