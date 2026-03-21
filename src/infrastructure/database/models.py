@@ -6,15 +6,16 @@ These models map to domain entities but contain database-specific concerns.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from uuid import uuid4
 
 from sqlalchemy import (
-    Column, String, Text, DateTime, Boolean, Integer, Float, 
-    ForeignKey, JSON, Index, UniqueConstraint, ARRAY
+    Column, String, Text, DateTime, Boolean, Integer, Float,
+    ForeignKey, JSON, Index, UniqueConstraint, ARRAY, case
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -176,7 +177,19 @@ class ConversationModel(Base):
     # Relationships
     user = relationship("UserModel", back_populates="conversations")
     messages = relationship("MessageModel", back_populates="conversation", cascade="all, delete-orphan")
-    
+
+    # Hybrid properties
+    @hybrid_property
+    def duration_days(self) -> int:
+        """Number of days since conversation was created"""
+        if self.created_at is None:
+            return 0
+        if self.created_at.tzinfo is None:
+            delta = datetime.now(timezone.utc) - self.created_at.replace(tzinfo=timezone.utc)
+        else:
+            delta = datetime.now(timezone.utc) - self.created_at
+        return max(0, delta.days)
+
     # Indexes
     __table_args__ = (
         Index('idx_conversations_user_agent', 'user_id', 'agent_type'),
@@ -246,7 +259,26 @@ class EmotionalRecordModel(Base):
 
     # Relationships
     user = relationship("UserModel", back_populates="emotional_records")
-    
+
+    # Hybrid properties
+    @hybrid_property
+    def intensity_level(self) -> str:
+        """Human-readable intensity category: low (1-3), medium (4-7), high (8-10)"""
+        if self.intensity <= 3:
+            return "low"
+        elif self.intensity <= 7:
+            return "medium"
+        return "high"
+
+    @intensity_level.expression
+    @classmethod
+    def intensity_level(cls):
+        return case(
+            (cls.intensity <= 3, "low"),
+            (cls.intensity <= 7, "medium"),
+            else_="high",
+        )
+
     # Indexes for tag-based search
     __table_args__ = (
         Index('idx_emotional_records_tags', 'tags', postgresql_using='gin'),
