@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-19T19:39:13.424Z"
+last_updated: "2026-03-21T17:33:30.596Z"
 progress:
-  total_phases: 1
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 2
+  completed_phases: 1
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 01 (Architecture Clearance and AI Readiness Audit) — IN PROGRESS
-Plan: 3 of 4 complete
+Phase: 02 (Advanced Pydantic and SQLAlchemy — pre-M3 skill phase) — EXECUTING
+Plan: 4 of 4
 
 ## Phase Progress
 
@@ -30,13 +30,14 @@ Plan: 3 of 4 complete
 | m2s1.1 | Demo flow hardening for E2E learning path (INSERTED) | ● Complete (2/2 plans done) |
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
-| 01 | Architecture Clearance and AI Readiness Audit | ◑ In Progress (3/4 plans done) |
+| 01 | Architecture Clearance and AI Readiness Audit | ● Complete (4/4 plans done) |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
 - Phase m2s1.1 inserted after Phase m2s1: Improve `scripts/demo_flow.sh` each feature/tool to harden E2E learning path (metrics now, telemetry next) (URGENT)
+- Phase 02 added (pre-M3 skill gate): Advanced Pydantic (custom validators, serializers, discriminated unions) + Advanced SQLAlchemy (loading strategies, hybrid properties, async patterns) + learning docs for both
 - Phase 01 added (pre-M3 clearance): architecture audit — endpoint review, simplification, redundancy removal, data management improvements, and AI readiness assessment for personalization and chat data gathering
 
 ### Codebase Facts
@@ -126,6 +127,11 @@ Plan: 3 of 4 complete
 - [Phase 01-03]: Vector(1536) dimension matches OpenAI text-embedding-ada-002; columns nullable=True until M3 embedding pipeline populates them
 - [Phase 01-03]: BreathingSessionModel excluded from embedding columns — only messages and emotional_records need semantic search
 - [Phase 01-03]: ORM migration test uses model metadata inspection to avoid SQLite/pgvector incompatibility in test fixtures
+- [Phase 02-03]: duration_days hybrid_property has no SQL expression side — live value only meaningful at Python level; intensity_level SQL expression side uses case() for future DB-level WHERE queries
+- [Phase 02-03]: Explicit session.commit() kept inside methods even though get_session() auto-commits on exit — double commit is harmless, explicit intent is clearer
+- [Phase 02-02]: Union[List[str], str] for trusted_hosts bypasses pydantic-settings v2 JSON-decode path for comma-separated env vars
+- [Phase 02-02]: model_config = SettingsConfigDict(...) replaces inner class Config — idiomatic pydantic-settings v2 pattern
+- [Phase 02-02]: _safe_model_to_dict shim removed from profile router; .model_dump() used directly throughout
 
 ## Issues / Blockers
 
