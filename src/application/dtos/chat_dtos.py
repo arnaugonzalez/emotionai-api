@@ -3,83 +3,76 @@ Data Transfer Objects for Chat Operations
 
 DTOs provide a clean interface for data transfer between layers
 without exposing internal domain structures.
+
+All DTOs use Pydantic v2 BaseModel so that validation errors surface
+as pydantic.ValidationError and produce structured HTTP 422 responses
+via FastAPI — instead of bare ValueError from dataclass __post_init__.
 """
 
-from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Literal
 from uuid import UUID
 from datetime import datetime, timezone
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Self
 
-@dataclass(frozen=True)
-class ChatRequest:
+
+class ChatRequest(BaseModel):
     """Request DTO for agent chat"""
+
+    model_config = ConfigDict(frozen=True)
+
     user_id: UUID
-    message: str
-    agent_type: str = "therapy"
+    message: str = Field(..., min_length=1, max_length=2000)
+    agent_type: Literal["therapy", "wellness"] = "therapy"
     context: Optional[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        # Validate message length
-        if not self.message or len(self.message.strip()) == 0:
-            raise ValueError("Message cannot be empty")
-        
-        if len(self.message) > 2000:
-            raise ValueError("Message too long (max 2000 characters)")
-        
-        # Validate agent type
-        valid_types = ["therapy", "wellness"]
-        if self.agent_type not in valid_types:
-            raise ValueError(f"Invalid agent type. Must be one of: {valid_types}")
+
+    @field_validator("message")
+    @classmethod
+    def message_not_whitespace(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Message cannot be empty or whitespace")
+        return v
 
 
-@dataclass(frozen=True)
-class ChatResponse:
+class ChatResponse(BaseModel):
     """Response DTO for agent chat"""
+
+    model_config = ConfigDict(frozen=True)
+
     message: str
     agent_type: str
     user_message: str
     conversation_id: Optional[str] = None
-    timestamp: datetime = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     context_used: Optional[Dict[str, Any]] = None
     is_crisis_response: bool = False  # Kept for therapy refinement (not standalone crisis detection)
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            object.__setattr__(self, 'timestamp', datetime.now(timezone.utc))
-    
+
     @classmethod
-    def create_crisis_response(cls, crisis_message: str) -> 'ChatResponse':
+    def create_crisis_response(cls, crisis_message: str) -> "ChatResponse":
         """Create a crisis response for urgent therapeutic situations (therapy refinement)"""
         return cls(
             message=crisis_message,
             agent_type="crisis",
             user_message="[Crisis content detected]",
-            is_crisis_response=True
+            is_crisis_response=True,
         )
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API response"""
-        return {
-            "message": self.message,
-            "agent_type": self.agent_type,
-            "user_message": self.user_message,
-            "conversation_id": self.conversation_id,
-            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "is_crisis_response": self.is_crisis_response
-        }
 
 
-@dataclass(frozen=True)
-class AgentStatusRequest:
+class AgentStatusRequest(BaseModel):
     """Request DTO for agent status"""
+
+    model_config = ConfigDict(frozen=True)
+
     user_id: UUID
     agent_type: str = "therapy"
 
 
-@dataclass(frozen=True)
-class AgentStatusResponse:
+class AgentStatusResponse(BaseModel):
     """Response DTO for agent status"""
+
+    model_config = ConfigDict(frozen=True)
+
     active: bool
     agent_type: str
     last_interaction: Optional[datetime] = None
@@ -87,127 +80,106 @@ class AgentStatusResponse:
     personality: str = "empathetic_supportive"
     conversation_length: int = 0
     session_count: int = 0
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API response"""
-        return {
-            "active": self.active,
-            "agent_type": self.agent_type,
-            "last_interaction": self.last_interaction.isoformat() if self.last_interaction else None,
-            "memory_summary": self.memory_summary,
-            "personality": self.personality,
-            "conversation_length": self.conversation_length,
-            "session_count": self.session_count
-        }
 
 
-@dataclass(frozen=True)
-class EmotionalRecordRequest:
+class EmotionalRecordRequest(BaseModel):
     """Request DTO for adding emotional records"""
+
+    model_config = ConfigDict(frozen=True)
+
     user_id: UUID
     emotion_type: str
-    intensity: int
+    intensity: int = Field(..., ge=1, le=10)
     context: Optional[str] = None
     location: Optional[str] = None
     notes: Optional[str] = None
-    
-    def __post_init__(self):
-        # Validate intensity
-        if not (1 <= self.intensity <= 10):
-            raise ValueError("Intensity must be between 1 and 10")
-        
-        # Validate emotion type
-        if not self.emotion_type or len(self.emotion_type.strip()) == 0:
+
+    @field_validator("emotion_type")
+    @classmethod
+    def emotion_type_not_empty(cls, v: str) -> str:
+        if not v.strip():
             raise ValueError("Emotion type cannot be empty")
+        return v
 
 
-@dataclass(frozen=True)
-class BreathingSessionRequest:
+class BreathingSessionRequest(BaseModel):
     """Request DTO for adding breathing sessions"""
+
+    model_config = ConfigDict(frozen=True)
+
     user_id: UUID
     pattern_name: str
-    duration_seconds: int
-    rating: Optional[float] = None
+    duration_seconds: int = Field(..., ge=0)
+    rating: Optional[float] = Field(None, ge=1.0, le=10.0)
     notes: Optional[str] = None
     session_data: Optional[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        # Validate duration
-        if self.duration_seconds < 0:
-            raise ValueError("Duration cannot be negative")
-        
-        # Validate rating if provided
-        if self.rating is not None and not (1.0 <= self.rating <= 10.0):
-            raise ValueError("Rating must be between 1.0 and 10.0")
 
 
-@dataclass(frozen=True)
-class UserProfileUpdateRequest:
+class UserProfileUpdateRequest(BaseModel):
     """Request DTO for updating user profile"""
+
+    model_config = ConfigDict(frozen=True)
+
     user_id: UUID
     profile_data: Dict[str, Any]
-    
-    def __post_init__(self):
+
+    @model_validator(mode="after")
+    def profile_data_not_empty(self) -> Self:
         if not self.profile_data:
             raise ValueError("Profile data cannot be empty")
+        return self
 
 
-@dataclass(frozen=True)
-class UserRegistrationRequest:
+class UserRegistrationRequest(BaseModel):
     """Request DTO for user registration"""
+
+    model_config = ConfigDict(frozen=True)
+
     email: str
-    password: str
-    first_name: str
-    last_name: str
-    
-    def __post_init__(self):
-        # Basic validation
-        if not self.email or "@" not in self.email:
+    password: str = Field(..., min_length=6)
+    first_name: str = Field(..., min_length=1)
+    last_name: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def email_must_be_valid(cls, v: str) -> str:
+        if not v or "@" not in v:
             raise ValueError("Valid email address is required")
-        
-        if not self.password or len(self.password) < 6:
-            raise ValueError("Password must be at least 6 characters")
-        
-        if not self.first_name or not self.last_name:
-            raise ValueError("First name and last name are required")
+        return v
 
 
-@dataclass(frozen=True)
-class UserLoginRequest:
+class UserLoginRequest(BaseModel):
     """Request DTO for user login"""
+
+    model_config = ConfigDict(frozen=True)
+
     email: str
-    password: str
-    
-    def __post_init__(self):
-        # Basic validation
-        if not self.email or "@" not in self.email:
+    password: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def email_must_be_valid(cls, v: str) -> str:
+        if not v or "@" not in v:
             raise ValueError("Valid email address is required")
-        
-        if not self.password:
-            raise ValueError("Password is required")
+        return v
 
 
-@dataclass(frozen=True)
-class TokenResponse:
+class TokenResponse(BaseModel):
     """Response DTO for authentication tokens"""
+
+    model_config = ConfigDict(frozen=True)
+
     access_token: str
     token_type: str
     expires_in: int
     user: Dict[str, Any]
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API response"""
-        return {
-            "access_token": self.access_token,
-            "token_type": self.token_type,
-            "expires_in": self.expires_in,
-            "user": self.user
-        }
 
 
-@dataclass(frozen=True)
-class ConversationHistoryResponse:
+class ConversationHistoryResponse(BaseModel):
     """Response DTO for conversation history"""
+
+    model_config = ConfigDict(frozen=True)
+
     id: str
     agent_type: str
     title: str
@@ -215,18 +187,6 @@ class ConversationHistoryResponse:
     last_message_at: datetime
     message_count: int
     is_active: bool = True
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API response"""
-        return {
-            "id": self.id,
-            "agent_type": self.agent_type,
-            "title": self.title,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "last_message_at": self.last_message_at.isoformat() if self.last_message_at else None,
-            "message_count": self.message_count,
-            "is_active": self.is_active
-        }
 
 
-# Crisis detection system has been removed in favor of intelligent tagging system 
+# Crisis detection system has been removed in favor of intelligent tagging system
