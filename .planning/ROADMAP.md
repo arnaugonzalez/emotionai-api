@@ -214,6 +214,8 @@ docs/learning/
 ├── prometheus_fastapi.md      (Milestone 2)
 ├── celery_redis.md            (Milestone 2)
 ├── opentelemetry.md           (Milestone 2)
+├── pydantic_advanced.md       (Phase 02 — pre-M3)
+├── sqlalchemy_advanced.md     (Phase 02 — pre-M3)
 ├── pgvector_embeddings.md     (Milestone 3)
 ├── rag_langchain.md           (Milestone 3)
 └── mlflow.md                  (Milestone 3)
@@ -262,6 +264,32 @@ Plans:
 - [ ] 01-02-PLAN.md — Repository stub implementations: emotional, breathing, analytics, events + tests
 - [ ] 01-03-PLAN.md — pgvector schema prep: docker-compose image swap, migration, ORM columns
 - [ ] 01-04-PLAN.md — AI readiness audit document: personalization gaps, embedding readiness, M3 prereqs
+
+### Phase 02: Advanced Pydantic and SQLAlchemy — pre-M3 skill phase
+
+**Goal:** Apply Pydantic v2 advanced patterns (validators, serializers, discriminated unions, SettingsConfigDict) and SQLAlchemy 2.0 advanced patterns (hybrid properties, selectinload, async session management) to existing codebase. Write learning docs for both. Skill-building gate before Milestone 3.
+
+**Requirements:** PYD-01, PYD-02, PYD-03, SA-01, SA-02, SA-03, SA-04
+
+**Success criteria (verifiable):**
+- [ ] All chat_dtos.py DTOs migrated from dataclass to Pydantic BaseModel with validators
+- [ ] Profile DTOs have @model_validator and @field_validator for cross-field constraints
+- [ ] Settings uses model_config = SettingsConfigDict() instead of inner class Config
+- [ ] EmotionalRecordModel has intensity_level hybrid_property
+- [ ] Conversation repository uses get_session() consistently (no async_session_factory)
+- [ ] Both repos have selectinload methods for eager relationship loading
+- [ ] `docs/learning/pydantic_advanced.md` exists with all 5 sections
+- [ ] `docs/learning/sqlalchemy_advanced.md` exists with all 5 sections
+- [ ] All existing tests still pass
+
+**Depends on:** Phase 01
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Migrate chat DTOs to Pydantic BaseModel, add validators to ChatApiRequest
+- [ ] 02-02-PLAN.md — Add validators to profile DTOs, migrate Settings to SettingsConfigDict
+- [ ] 02-03-PLAN.md — Add hybrid_property to ORM models, selectinload and session fix in repos
+- [ ] 02-04-PLAN.md — Write pydantic_advanced.md and sqlalchemy_advanced.md learning docs
 
 ---
 
