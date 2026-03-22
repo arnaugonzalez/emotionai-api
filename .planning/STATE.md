@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-21T17:33:37.805Z"
+last_updated: "2026-03-21T17:38:28Z"
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 02 (Advanced Pydantic and SQLAlchemy — pre-M3 skill phase) — EXECUTING
-Plan: 4 of 4
+Phase: 02 (Advanced Pydantic and SQLAlchemy — pre-M3 skill phase) — COMPLETE
+Plan: 4 of 4 — DONE
 
 ## Phase Progress
 
@@ -31,6 +31,7 @@ Plan: 4 of 4
 | m2s2 | Celery + Redis Task Queue | ● Complete (3/3 plans done) |
 | m2s3 | OpenTelemetry Tracing | ● Complete (2/2 plans done) |
 | 01 | Architecture Clearance and AI Readiness Audit | ● Complete (4/4 plans done) |
+| 02 | Advanced Pydantic and SQLAlchemy — pre-M3 skill phase | ● Complete (4/4 plans done) |
 
 ## Accumulated Context
 
@@ -136,6 +137,8 @@ Plan: 4 of 4
 - [Phase 02-01]: model_dump() replaces all manual to_dict() methods — Pydantic handles serialization
 - [Phase 02-01]: ChatApiResponse.timestamp changed from str to datetime + @field_serializer — avoids manual isoformat() scattered across callers
 - [Phase 02-01]: Ad-hoc HTTPException checks for message length removed from route handler — validation boundary moved to model definition
+- [Phase 02-04]: pydantic_advanced.md and sqlalchemy_advanced.md written with 5-section structure using real codebase examples from plans 01-03
+- [Phase 02-04]: duration_days hybrid_property documents intentional omission of @expression — runtime-dependent value has no portable SQL equivalent
 
 ## Issues / Blockers
 
@@ -143,4 +146,4 @@ Plan: 4 of 4
 
 ## Last Updated
 
-2026-03-20T00:00:00Z — Completed 01-03-PLAN.md; phase 01 plan 3 of 4 done
+2026-03-21T17:38:28Z — Completed 02-04-PLAN.md; phase 02 complete (4/4 plans done)

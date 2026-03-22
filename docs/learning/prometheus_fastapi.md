@@ -389,3 +389,206 @@ This matters because demo failures are no longer "something is wrong". They now 
 - FastAPI instrumentator library: https://github.com/trallnag/prometheus-fastapi-instrumentator
 - Python client docs: https://prometheus.github.io/client_python/
 - Label cardinality background: https://prometheus.io/docs/practices/naming/
+
+## When to use Prometheus (vs alternatives)
+
+| Scenario | Best tool | Why |
+|----------|-----------|-----|
+| Long-running service exposing current state | Prometheus pull | Target availability is itself a data point. Down = `UP == 0`, alert fires automatically. |
+| Short-lived batch job or CLI script | Pushgateway + Prometheus | Job finishes before scrape interval; push at job end instead. |
+| Sub-second resolution required | StatsD + Graphite | Prometheus scrape granularity is 10-15s by design. |
+| Per-request timeline ("why was *this* request slow?") | OpenTelemetry traces | Metrics are aggregate signals; traces are per-request waterfall views. |
+| Spike investigation ("*which* function caused it?") | Structured logs or OTel spans | Prometheus tells you the rate spiked; logs/traces name the culprit. |
+| Real-time alerting on error rates | Prometheus + Alertmanager | `rate()` over short windows is ideal for alert rule expressions. |
+| Multi-process uvicorn in production | Prometheus multiprocess mode | Single-process in-memory registry cannot see other workers without it. |
+
+EmotionAI decision: Prometheus for aggregate latency and request counts; OpenTelemetry for per-request
+span-level breakdown. These are complementary, not competing.
+
+## Advanced code examples
+
+### Summary vs Histogram — when to use which
+
+```python
+from prometheus_client import Summary
+
+# Summary computes quantiles client-side per process.
+# Correct for single-process deployments, but quantiles cannot be
+# mathematically aggregated across multiple workers.
+openai_latency_summary = Summary(
+    "emotionai_openai_latency_summary_seconds",
+    "LLM call latency (client-side quantiles)",
+    labelnames=["call_type"],
+)
+
+with openai_latency_summary.labels(call_type="chat_completion").time():
+    result = await chat_use_case.execute(...)
+```
+
+Why EmotionAI uses Histogram instead of Summary:
+
+- `sum(rate(emotionai_openai_latency_seconds_bucket[5m]))` aggregates correctly across N workers.
+- Summary quantiles per worker cannot be combined — `quantile(0.95)` across 4 workers is not the
+  real p95 of all requests.
+- EmotionAI will scale horizontally; Histogram is the correct choice.
+
+### Reading a metric value in tests
+
+```python
+from src.infrastructure.metrics.custom_metrics import chat_requests_total
+
+def test_counter_increments_on_success():
+    before = chat_requests_total.labels(
+        agent_type="therapy", status="success"
+    )._value.get()
+    # trigger a chat request via TestClient ...
+    after = chat_requests_total.labels(
+        agent_type="therapy", status="success"
+    )._value.get()
+    assert after == before + 1
+```
+
+`_value` is a prometheus_client internal. Using it in tests is acceptable; avoid it in production code.
+
+### Programmatic metrics endpoint assertion (Python equivalent of demo_steps/10_metrics.sh)
+
+```python
+import httpx
+
+async def assert_metrics_healthy(base_url: str) -> None:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{base_url}/metrics")
+    assert resp.status_code == 200
+    assert "text/plain" in resp.headers["content-type"]
+    for family in [
+        "emotionai_chat_requests_total",
+        "emotionai_openai_latency_seconds_bucket",
+        "emotionai_active_users_gauge",
+    ]:
+        assert family in resp.text, f"Missing metric family: {family}"
+```
+
+### Alertmanager rule for crisis detection
+
+```yaml
+# prometheus_rules.yml
+groups:
+  - name: emotionai
+    rules:
+      - alert: CrisisRateSpike
+        expr: rate(emotionai_chat_requests_total{status="crisis"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Crisis conversations spiking (>0.1/s sustained 2m)"
+```
+
+## Interview Prep — Prometheus
+
+**Q1: What is the difference between a Counter, Gauge, and Histogram? Give a real example of each.**
+
+Counter: only increases, resets on restart. Use for cumulative events. Example in EmotionAI:
+`emotionai_chat_requests_total` counts every completed chat request by agent_type and status.
+Gauge: current snapshot, can go up or down. Example: `emotionai_active_users_gauge` reflects how
+many chat handlers are in flight right now. Histogram: buckets observations for percentile queries.
+Example: `emotionai_openai_latency_seconds` with custom buckets up to 30s captures the full range
+of LLM response times.
+
+**Q2: Why does EmotionAI use custom histogram buckets instead of the defaults?**
+
+The default prometheus_client buckets top out around 10 seconds. OpenAI-backed work can take
+15-30 seconds under load. Without a 30-second bucket, slow calls collapse into `+Inf`. The
+`histogram_quantile` function cannot estimate percentiles beyond the largest explicit bucket, so
+p95 and p99 become meaningless for tail latency. Custom buckets: `(0.1, 0.25, 0.5, 1.0, 2.5,
+5.0, 10.0, 30.0)`.
+
+**Q3: Why is high-cardinality labeling dangerous?**
+
+Every unique label combination is a separate time series stored in Prometheus memory. 10,000
+users × 3 statuses × 2 agent types = 60,000 series. Prometheus is designed for thousands of
+series, not millions. Memory climbs, scrapes time out, queries slow. EmotionAI keeps labels
+bounded: `status` has 3 values, `agent_type` stays at low cardinality.
+
+**Q4: What is the difference between `rate()` and `irate()`?**
+
+`rate()` uses all samples in the window and smooths them — good for dashboards and trend views.
+`irate()` uses only the last two samples — more reactive but noisier, suited for alerting where
+you want to catch recent sharp changes. Use `rate()` in Grafana panels, `irate()` in alert rules
+where reaction speed matters.
+
+**Q5: Why does EmotionAI expose `/metrics` in lifespan startup rather than at module import time?**
+
+FastAPI middleware is added layer by layer during app configuration. If instrumentation runs before
+middleware registration, the ASGI stack it wraps is incomplete. Latency measurements would not
+include time spent inside LoggingMiddleware or RateLimitingMiddleware. Lifespan startup guarantees
+the full middleware stack exists before the instrumentator attaches.
+
+**Q6: How does `prometheus_fastapi_instrumentator` work internally?**
+
+It installs an ASGI middleware that intercepts every response after it is generated. It extracts
+templated path (e.g. `/users/{id}` not `/users/123`), HTTP method, status code group, and
+response time, then records them into histogram buckets using the standard prometheus_client
+library. `should_ignore_untemplated=True` drops requests that did not match any route, preventing
+one-off paths (e.g. `/favicon.ico`) from spawning unique time series.
+
+**Q7: What happens to counters when the process restarts?**
+
+They reset to zero because they live in process memory. PromQL `rate()` handles this via counter
+reset detection: if a scraped value is lower than the previous scrape, Prometheus assumes a restart
+and treats the new lower value as the new baseline. No spike appears in `rate()` output.
+
+**Q8: How would you set up Prometheus for a uvicorn deployment with 4 workers?**
+
+Set `PROMETHEUS_MULTIPROC_DIR` to a writable shared directory. Configure prometheus_client to use
+`MultiProcessCollector`. Each worker writes metrics to separate files in that directory.
+When Prometheus scrapes `/metrics`, one collector aggregates all worker files and returns merged
+results. Without this, each worker has its own in-memory registry; a scrape only sees one worker's
+data nondeterministically.
+
+**Q9: What does the `should_group_status_codes=True` flag do in Instrumentator?**
+
+It groups status codes into families: 2xx, 3xx, 4xx, 5xx rather than keeping 200, 201, 204, 400,
+404, etc. as separate label values. This controls cardinality: without grouping, each distinct
+status code is a separate label value per route, multiplying time series.
+
+**Q10: What is Pushgateway and when would EmotionAI need it?**
+
+Pushgateway is an intermediary that accepts pushed metrics from short-lived jobs and holds them
+for Prometheus to scrape. EmotionAI would need it for things like a nightly database cleanup
+script, a one-off migration runner, or any job that starts and finishes in under 15 seconds —
+before Prometheus would have time to scrape the job's `/metrics` endpoint directly.
+
+## Gotchas interviewers test on
+
+**"Can you register the same metric name twice in the same process?"**
+No. prometheus_client raises `ValueError: Duplicated timeseries in CollectorRegistry`. This is
+why EmotionAI defines all custom metrics once in `src/infrastructure/metrics/custom_metrics.py`
+and imports the shared instances. Defining metrics inside route handlers or calling the
+constructor on every request triggers this error on the second request.
+
+**"What does `le` stand for in histogram output?"**
+"Less than or equal." `emotionai_openai_latency_seconds_bucket{le="1.0"}` contains the count of
+observations where latency was ≤ 1.0 second. The `+Inf` bucket always equals `_count` because
+every observation is ≤ infinity. Common wrong answer: "label equals."
+
+**"Is `histogram_quantile` exact?"**
+No. It assumes uniform distribution within each bucket. Accuracy depends on how tightly the
+buckets bracket the percentile of interest. EmotionAI's 0.5-1.0 bucket is the key range for p50;
+tighter buckets there would give a more accurate p50 estimate.
+
+**"If a spike lasts 10 seconds and your scrape interval is 15 seconds, will Prometheus detect it?"**
+Likely not. Prometheus captures point-in-time samples; events between scrapes are invisible. For
+sub-scrape-interval visibility, you need a shorter scrape interval (more load), counters (the
+spike increments are cumulative and will appear on next scrape as a large `rate()`), or event-based
+logging/tracing.
+
+**"What is the instrumentation order bug?"**
+Calling `Instrumentator().instrument(app)` before `app.add_middleware(...)` means the middleware
+layers are not inside the measured ASGI path. Timing observations skip the real overhead. The fix
+is always: add all middleware first, then instrument.
+
+**"Why does `track_inprogress()` still decrement even on exception?"**
+Because it is a context manager using `__exit__`. Python guarantees `__exit__` runs even if an
+exception propagates through the `with` block. EmotionAI uses this on `active_users_gauge` in
+`chat.py` so a crashed chat handler does not permanently inflate the in-flight count.
