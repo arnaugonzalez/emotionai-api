@@ -123,4 +123,26 @@ async def create_custom_emotion(
         _handle_db_error(e, "creating", "custom emotion")
 
 
-
+@router.delete("/custom_emotions/{emotion_id}", status_code=204)
+async def delete_custom_emotion(
+    emotion_id: str,
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container)
+):
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            emotion_uuid = UUID(emotion_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid emotion id")
+        result = await session.execute(
+            select(CustomEmotionModel).where(
+                CustomEmotionModel.id == emotion_uuid,
+                CustomEmotionModel.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Custom emotion not found")
+        await session.delete(record)
+        await session.commit()

@@ -236,3 +236,52 @@ async def create_breathing_pattern(
         _handle_db_error(e, "creating", "breathing pattern")
 
 
+@router.delete("/breathing_sessions/{session_id}", status_code=204)
+async def delete_breathing_session(
+    session_id: str,
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container)
+):
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid session id")
+        result = await session.execute(
+            select(BreathingSessionModel).where(
+                BreathingSessionModel.id == session_uuid,
+                BreathingSessionModel.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Breathing session not found")
+        await session.delete(record)
+        await session.commit()
+
+
+@router.delete("/breathing_patterns/{pattern_id}", status_code=204)
+async def delete_breathing_pattern(
+    pattern_id: str,
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container)
+):
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            pattern_uuid = UUID(pattern_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid pattern id")
+        result = await session.execute(
+            select(BreathingPatternModel).where(
+                BreathingPatternModel.id == pattern_uuid,
+                BreathingPatternModel.user_id == user_id,
+                BreathingPatternModel.is_preset == False,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Breathing pattern not found")
+        await session.delete(record)
+        await session.commit()
