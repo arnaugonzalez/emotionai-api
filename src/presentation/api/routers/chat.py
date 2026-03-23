@@ -54,6 +54,8 @@ class ChatApiResponse(BaseModel):
     conversation_id: Optional[str] = None
     suggestions: List[str] = []
     timestamp: datetime
+    crisis_detected: bool = False
+    crisis_resources: Optional[Dict[str, Any]] = None
 
     @field_serializer("timestamp")
     def serialize_timestamp(self, v: datetime) -> str:
@@ -111,7 +113,9 @@ async def chat_with_agent(
                         agent_type=response['agent_type'],
                         conversation_id=(response.get('conversation_id') or f"conv_{uuid4()}"),
                         suggestions=[],
-                        timestamp=(response.get('timestamp') or datetime.now(timezone.utc))
+                        timestamp=(response.get('timestamp') or datetime.now(timezone.utc)),
+                        crisis_detected=response.get('crisis_detected', False),
+                        crisis_resources=response.get('crisis_resources', None),
                     )
                 elif hasattr(response, 'message') and hasattr(response, 'agent_type'):
                     # Handle TherapyResponse object
@@ -120,7 +124,9 @@ async def chat_with_agent(
                         agent_type=response.agent_type,
                         conversation_id=response.conversation_id,
                         suggestions=response.follow_up_suggestions if hasattr(response, 'follow_up_suggestions') else [],
-                        timestamp=response.timestamp if response.timestamp else datetime.now(timezone.utc)
+                        timestamp=response.timestamp if response.timestamp else datetime.now(timezone.utc),
+                        crisis_detected=getattr(response, 'crisis_detected', False),
+                        crisis_resources=getattr(response, 'crisis_resources', None),
                     )
 
                     # Log therapeutic approach for debugging
