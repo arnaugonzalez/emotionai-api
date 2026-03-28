@@ -9,12 +9,18 @@ as pydantic.ValidationError and produce structured HTTP 422 responses
 via FastAPI — instead of bare ValueError from dataclass __post_init__.
 """
 
+from __future__ import annotations
+
 from typing import Dict, Any, Optional, Literal
 from uuid import UUID
 from datetime import datetime, timezone
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from typing import Self
 
 
 class ChatRequest(BaseModel):

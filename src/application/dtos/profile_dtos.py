@@ -1,7 +1,15 @@
 """Profile DTOs for user profile management and therapy context"""
 
+from __future__ import annotations
+
 from datetime import datetime
-from typing import ClassVar, Optional, Dict, Any, List, Self
+from typing import ClassVar, Optional, Dict, Any, List
+
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 from pydantic import BaseModel, Field, EmailStr, field_validator, model_validator, ConfigDict
 
 
