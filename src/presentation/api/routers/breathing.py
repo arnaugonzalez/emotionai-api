@@ -261,6 +261,56 @@ async def delete_breathing_session(
         await session.commit()
 
 
+@router.put("/breathing_sessions/{session_id}")
+async def update_breathing_session(
+    session_id: str,
+    body: Dict[str, Any],
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container),
+):
+    """Update an existing breathing session (used by offline sync UPDATE operations)."""
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid session id")
+
+        result = await session.execute(
+            select(BreathingSessionModel).where(
+                BreathingSessionModel.id == session_uuid,
+                BreathingSessionModel.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Breathing session not found")
+
+        if "pattern" in body:
+            record.pattern_name = body["pattern"]
+        if "rating" in body:
+            val = float(body["rating"])
+            if val < 1 or val > 5:
+                raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
+            record.effectiveness_rating = int(val)
+        if "comment" in body:
+            comment = body["comment"]
+            if comment is not None and len(str(comment)) > 200:
+                raise HTTPException(status_code=400, detail="comment must be at most 200 characters")
+            record.notes = comment
+
+        await session.commit()
+
+        return {
+            "id": str(record.id),
+            "pattern": record.pattern_name,
+            "rating": float(record.effectiveness_rating or 3.0),
+            "comment": record.notes or "",
+            "created_at": record.created_at.isoformat(),
+            "status": "updated",
+        }
+
+
 @router.delete("/breathing_patterns/{pattern_id}", status_code=204)
 async def delete_breathing_pattern(
     pattern_id: str,
@@ -285,3 +335,55 @@ async def delete_breathing_pattern(
             raise HTTPException(status_code=404, detail="Breathing pattern not found")
         await session.delete(record)
         await session.commit()
+
+
+@router.put("/breathing_patterns/{pattern_id}")
+async def update_breathing_pattern(
+    pattern_id: str,
+    body: Dict[str, Any],
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container),
+):
+    """Update an existing breathing pattern (used by offline sync UPDATE operations)."""
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            pattern_uuid = UUID(pattern_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid pattern id")
+
+        result = await session.execute(
+            select(BreathingPatternModel).where(
+                BreathingPatternModel.id == pattern_uuid,
+                BreathingPatternModel.user_id == user_id,
+                BreathingPatternModel.is_preset == False,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Breathing pattern not found")
+
+        if "name" in body:
+            name = str(body["name"])
+            if len(name) > 30:
+                raise HTTPException(status_code=400, detail="name must be at most 30 characters")
+            record.name = name
+        for field in ("inhale_seconds", "hold_seconds", "exhale_seconds", "cycles", "rest_seconds"):
+            if field in body:
+                val = int(body[field])
+                if val < 0 or val > 99:
+                    raise HTTPException(status_code=400, detail=f"{field} must be between 0 and 99")
+                setattr(record, field, val)
+
+        await session.commit()
+
+        return {
+            "id": str(record.id),
+            "name": record.name,
+            "inhale_seconds": record.inhale_seconds,
+            "hold_seconds": record.hold_seconds,
+            "exhale_seconds": record.exhale_seconds,
+            "cycles": record.cycles,
+            "rest_seconds": record.rest_seconds,
+            "status": "updated",
+        }

@@ -146,3 +146,52 @@ async def delete_custom_emotion(
             raise HTTPException(status_code=404, detail="Custom emotion not found")
         await session.delete(record)
         await session.commit()
+
+
+@router.put("/custom_emotions/{emotion_id}")
+async def update_custom_emotion(
+    emotion_id: str,
+    body: Dict[str, Any],
+    user_id: UUID = Depends(get_current_user_id),
+    container: ApplicationContainer = Depends(get_container),
+):
+    """Update an existing custom emotion (used by offline sync UPDATE operations)."""
+    db = container.database
+    async with db.get_session() as session:
+        try:
+            emotion_uuid = UUID(emotion_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid emotion id")
+
+        result = await session.execute(
+            select(CustomEmotionModel).where(
+                CustomEmotionModel.id == emotion_uuid,
+                CustomEmotionModel.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Custom emotion not found")
+
+        if "name" in body:
+            name = str(body["name"])
+            if len(name) > 30:
+                raise HTTPException(status_code=400, detail="name must be at most 30 characters")
+            record.name = name
+        if "color" in body:
+            try:
+                color_int = int(body["color"])
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="color must be an integer")
+            if color_int < 0 or color_int > 0xFFFFFFFF:
+                raise HTTPException(status_code=400, detail="color integer out of range")
+            record.color = color_int
+
+        await session.commit()
+
+        return validate_custom_emotion({
+            "id": str(record.id),
+            "name": record.name,
+            "color": record.color,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+        })
