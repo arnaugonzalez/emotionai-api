@@ -128,6 +128,10 @@ _Note: TDD tasks — tests written before implementation in both cases_
 
 None - no external service configuration required.
 
+## Self-Check: PASSED
+
+All key files exist and both task commits verified.
+
 ## Next Phase Readiness
 
 - Profile DTOs are fully Pydantic v2 with validators — ready for M3 feature work
